@@ -6,20 +6,40 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Papel } from "@/lib/types";
 
-const MENU_ATIVO = [
-  { href: "/calculadora", label: "Calculadora", icon: "🧮" },
-  { href: "/orcamentos", label: "Meus Orçamentos", icon: "📄" },
-  { href: "/produtos", label: "Meus Produtos", icon: "🧩" },
-  { href: "/pedidos", label: "Pedidos", icon: "🗂️" },
-  { href: "/vendas", label: "Vendas", icon: "💲" },
-  { href: "/financeiro", label: "Financeiro", icon: "📊" },
-  { href: "/relatorios", label: "Relatórios", icon: "🧾" },
-  { href: "/ranking", label: "Ranking", icon: "🏆" },
-  { href: "/outros-gastos", label: "Outros Gastos", icon: "💸" },
-  { href: "/investimentos", label: "Investimentos", icon: "📈" },
-  { href: "/impressoras", label: "Impressoras", icon: "🖨️" },
-  { href: "/filamentos", label: "Filamentos", icon: "🧵" },
-  { href: "/insumos", label: "Insumos", icon: "📦" },
+const SECOES = [
+  {
+    titulo: "Vender",
+    itens: [
+      { href: "/calculadora", label: "Calculadora", icon: "🧮" },
+      { href: "/orcamentos", label: "Meus Orçamentos", icon: "📄" },
+      { href: "/produtos", label: "Meus Produtos", icon: "🧩" },
+      { href: "/pedidos", label: "Pedidos", icon: "🗂️" },
+      { href: "/vendas", label: "Vendas", icon: "💲" },
+    ],
+  },
+  {
+    titulo: "Análise",
+    itens: [
+      { href: "/financeiro", label: "Financeiro", icon: "📊" },
+      { href: "/relatorios", label: "Relatórios", icon: "🧾" },
+      { href: "/ranking", label: "Ranking", icon: "🏆" },
+    ],
+  },
+  {
+    titulo: "Gastos",
+    itens: [
+      { href: "/outros-gastos", label: "Outros Gastos", icon: "💸" },
+      { href: "/investimentos", label: "Investimentos", icon: "📈" },
+    ],
+  },
+  {
+    titulo: "Cadastros",
+    itens: [
+      { href: "/impressoras", label: "Impressoras", icon: "🖨️" },
+      { href: "/filamentos", label: "Filamentos", icon: "🧵" },
+      { href: "/insumos", label: "Insumos", icon: "📦" },
+    ],
+  },
 ];
 
 export function Sidebar({ nome, papel }: { nome: string; papel: Papel }) {
@@ -34,6 +54,24 @@ export function Sidebar({ nome, papel }: { nome: string; papel: Papel }) {
     router.refresh();
   }
 
+  function ItemMenu({ href, label, icon }: { href: string; label: string; icon: string }) {
+    const ativo = pathname?.startsWith(href);
+    return (
+      <Link
+        href={href}
+        onClick={() => setAberto(false)}
+        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
+          ativo
+            ? "bg-accent-gradient text-white font-medium"
+            : "text-base-muted hover:bg-base-surface2 hover:text-base-text"
+        }`}
+      >
+        <span className="w-4 text-center shrink-0">{icon}</span>
+        {label}
+      </Link>
+    );
+  }
+
   const conteudo = (
     <div className="flex flex-col h-full">
       <div className="px-5 py-5 border-b border-base-border">
@@ -41,40 +79,28 @@ export function Sidebar({ nome, papel }: { nome: string; papel: Papel }) {
         <p className="text-xs text-base-muted mt-0.5">{nome}</p>
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-        {MENU_ATIVO.map((item) => {
-          const ativo = pathname?.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setAberto(false)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
-                ativo
-                  ? "bg-accent-gradient text-white font-medium"
-                  : "text-base-muted hover:bg-base-surface2 hover:text-base-text"
-              }`}
-            >
-              <span>{item.icon}</span>
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-5">
+        {SECOES.map((secao) => (
+          <div key={secao.titulo}>
+            <p className="px-3 pb-1.5 text-[11px] font-semibold text-base-faint uppercase tracking-wider">
+              {secao.titulo}
+            </p>
+            <div className="space-y-0.5">
+              {secao.itens.map((item) => (
+                <ItemMenu key={item.href} {...item} />
+              ))}
+            </div>
+          </div>
+        ))}
 
         {papel === "admin" && (
-          <div className="pt-3 mt-3 border-t border-base-border/60">
-            <Link
-              href="/configuracoes"
-              onClick={() => setAberto(false)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
-                pathname?.startsWith("/configuracoes")
-                  ? "bg-accent-gradient text-white font-medium"
-                  : "text-base-muted hover:bg-base-surface2 hover:text-base-text"
-              }`}
-            >
-              <span>⚙️</span>
-              Configurações
-            </Link>
+          <div>
+            <p className="px-3 pb-1.5 text-[11px] font-semibold text-base-faint uppercase tracking-wider">
+              Admin
+            </p>
+            <div className="space-y-0.5">
+              <ItemMenu href="/configuracoes" label="Configurações" icon="⚙️" />
+            </div>
           </div>
         )}
       </nav>
@@ -84,7 +110,7 @@ export function Sidebar({ nome, papel }: { nome: string; papel: Papel }) {
           onClick={sair}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-base-muted hover:bg-base-surface2 hover:text-bad transition-colors"
         >
-          <span>🚪</span>
+          <span className="w-4 text-center shrink-0">🚪</span>
           Sair
         </button>
       </div>
