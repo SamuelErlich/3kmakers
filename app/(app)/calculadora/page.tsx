@@ -70,6 +70,10 @@ function CalculadoraPage() {
   const [plataformaId, setPlataformaId] = useState<string>("");
   const [mostrarMaisOpcoes, setMostrarMaisOpcoes] = useState(false);
 
+  // ---- seções que já vêm configuradas desde o primeiro uso — ficam recolhidas por padrão ----
+  const [mostrarParametros, setMostrarParametros] = useState(false);
+  const [mostrarInsumos, setMostrarInsumos] = useState(false);
+
   // ---- Pós-processamento ----
   const [valorHoraPessoal, setValorHoraPessoal] = useState("0");
   const [modoPos, setModoPos] = useState<"peca" | "lote">("peca");
@@ -296,6 +300,13 @@ function CalculadoraPage() {
   // não existe mais um botão "Calcular": qualquer alteração (inclusive ligar/desligar
   // a taxa de marketplace) já atualiza o valor final na hora.
   const pronto = nomePeca.trim() !== "" && Number(pesoG) > 0;
+
+  // na primeira vez (sem impressora configurada ainda), abre Parâmetros de Custo sozinho
+  // pra guiar o cadastro; depois disso fica recolhido por padrão.
+  useEffect(() => {
+    if (!carregandoApoio && !impressoraId) setMostrarParametros(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carregandoApoio]);
 
   // salva os últimos parâmetros usados (pra próxima vez que abrir a Calculadora), sem precisar de botão
   useEffect(() => {
@@ -578,72 +589,143 @@ function CalculadoraPage() {
         </div>
       </Card>
 
-      {/* Parâmetros de Custo */}
-      <Card title="Parâmetros de Custo" icon="⚙️">
-        <Field label="Selecionar Impressora">
-          <Select value={impressoraId} onChange={(e) => selecionarImpressora(e.target.value)}>
-            <option value="">Escolha uma impressora cadastrada</option>
-            {impressoras.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.nome}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <div>
-          <h3 className="text-accent-hover text-sm font-medium mb-3">Custos de Operação</h3>
-          <div className="space-y-4">
-            <Field label="Preço do kWh (R$)">
-              <Input type="number" step="0.01" value={precoKwh} onChange={(e) => setPrecoKwh(e.target.value)} />
-            </Field>
-
-            <Field label="Como calcular o custo de energia?">
-              <SegmentedControl
-                value={modoEnergia}
-                onChange={setModoEnergia}
-                options={[
-                  { value: "consumo", label: "Consumo da impressora (W)" },
-                  { value: "medido", label: "Total medido (Wh)" },
-                ]}
-              />
-            </Field>
-
-            {modoEnergia === "consumo" ? (
-              <Field label="Consumo da Máquina (W)">
-                <Input type="number" value={consumoW} onChange={(e) => setConsumoW(e.target.value)} />
-              </Field>
-            ) : (
-              <Field label="Consumo total medido (Wh)">
-                <Input type="number" value={whTotal} onChange={(e) => setWhTotal(e.target.value)} />
-              </Field>
-            )}
-
-            <Field label="Valor de Compra da Máquina (R$)">
-              <Input type="number" step="0.01" value={valorImpressora} onChange={(e) => setValorImpressora(e.target.value)} />
-            </Field>
-            <Field label="Vida Útil da Máquina (horas)">
-              <Input type="number" value={vidaUtilImpressora} onChange={(e) => setVidaUtilImpressora(e.target.value)} />
-            </Field>
+      {/* Venda em Marketplace — destaque, o foco principal do negócio */}
+      <Card className="!border-accent/50">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-medium flex items-center gap-2">🛒 Venda em Marketplace</h3>
+            <p className="text-xs text-base-muted mt-1">
+              Já calcula o preço com a taxa da plataforma embutida, pronto pra postar no anúncio.
+            </p>
           </div>
+          <Toggle checked={incluirTaxaMarketplace} onChange={setIncluirTaxaMarketplace} />
         </div>
+        {incluirTaxaMarketplace && (
+          <Field label="Plataforma">
+            <Select value={plataformaId} onChange={(e) => setPlataformaId(e.target.value)}>
+              <option value="">Escolha a plataforma</option>
+              {plataformas.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome} ({(p.taxa_percentual * 100).toFixed(0)}% + {formatBRL(p.taxa_fixa)})
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
       </Card>
 
-      {/* Insumos e Lucro */}
-      <Card title="Insumos e Lucro" icon="🧵">
-        <Field label="Preço do Filamento (R$/kg)" hint={usarEstoqueFilamento ? "Preenchido automaticamente pelo filamento do estoque" : undefined}>
-          <Input
-            type="number"
-            step="0.01"
-            value={precoFilamentoKg}
-            onChange={(e) => setPrecoFilamentoKg(e.target.value)}
-            disabled={usarEstoqueFilamento}
-          />
-        </Field>
-        <Field label="Taxa de Falha (%)">
-          <Input type="number" value={taxaFalha} onChange={(e) => setTaxaFalha(e.target.value)} />
-        </Field>
-        <Toggle checked={salvarConfiguracoes} onChange={setSalvarConfiguracoes} label="Salvar configurações" />
+      {/* Parâmetros de Custo — recolhido por padrão: já vem salvo desde o primeiro cadastro */}
+      <Card>
+        <button
+          type="button"
+          onClick={() => setMostrarParametros(!mostrarParametros)}
+          className="w-full flex items-center justify-between"
+        >
+          <span className="text-left">
+            <span className="font-medium flex items-center gap-2">⚙️ Parâmetros de Custo</span>
+            {!mostrarParametros && (
+              <span className="text-xs text-base-muted block mt-0.5">
+                {impressoraId
+                  ? impressoras.find((i) => i.id === impressoraId)?.nome ?? "Impressora selecionada"
+                  : "⚠️ nenhuma impressora selecionada"}{" "}
+                · R$ {precoKwh}/kWh
+              </span>
+            )}
+          </span>
+          <span className="text-base-muted shrink-0">{mostrarParametros ? "▲" : "▼"}</span>
+        </button>
+
+        {mostrarParametros && (
+          <div className="space-y-4 pt-2">
+            <Field label="Selecionar Impressora">
+              <Select value={impressoraId} onChange={(e) => selecionarImpressora(e.target.value)}>
+                <option value="">Escolha uma impressora cadastrada</option>
+                {impressoras.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.nome}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            <div>
+              <h3 className="text-accent-hover text-sm font-medium mb-3">Custos de Operação</h3>
+              <div className="space-y-4">
+                <Field label="Preço do kWh (R$)">
+                  <Input type="number" step="0.01" value={precoKwh} onChange={(e) => setPrecoKwh(e.target.value)} />
+                </Field>
+
+                <Field label="Como calcular o custo de energia?">
+                  <SegmentedControl
+                    value={modoEnergia}
+                    onChange={setModoEnergia}
+                    options={[
+                      { value: "consumo", label: "Consumo da impressora (W)" },
+                      { value: "medido", label: "Total medido (Wh)" },
+                    ]}
+                  />
+                </Field>
+
+                {modoEnergia === "consumo" ? (
+                  <Field label="Consumo da Máquina (W)">
+                    <Input type="number" value={consumoW} onChange={(e) => setConsumoW(e.target.value)} />
+                  </Field>
+                ) : (
+                  <Field label="Consumo total medido (Wh)">
+                    <Input type="number" value={whTotal} onChange={(e) => setWhTotal(e.target.value)} />
+                  </Field>
+                )}
+
+                <Field label="Valor de Compra da Máquina (R$)">
+                  <Input type="number" step="0.01" value={valorImpressora} onChange={(e) => setValorImpressora(e.target.value)} />
+                </Field>
+                <Field label="Vida Útil da Máquina (horas)">
+                  <Input type="number" value={vidaUtilImpressora} onChange={(e) => setVidaUtilImpressora(e.target.value)} />
+                </Field>
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Insumos e Lucro — recolhido por padrão: idem, já vem salvo */}
+      <Card>
+        <button
+          type="button"
+          onClick={() => setMostrarInsumos(!mostrarInsumos)}
+          className="w-full flex items-center justify-between"
+        >
+          <span className="text-left">
+            <span className="font-medium flex items-center gap-2">🧵 Insumos e Lucro</span>
+            {!mostrarInsumos && (
+              <span className="text-xs text-base-muted block mt-0.5">
+                {usarEstoqueFilamento
+                  ? filamentos.find((f) => f.id === filamentoId)?.material ?? "filamento do estoque"
+                  : `R$ ${precoFilamentoKg}/kg`}{" "}
+                · falha {taxaFalha}%
+              </span>
+            )}
+          </span>
+          <span className="text-base-muted shrink-0">{mostrarInsumos ? "▲" : "▼"}</span>
+        </button>
+
+        {mostrarInsumos && (
+          <div className="space-y-4 pt-2">
+            <Field label="Preço do Filamento (R$/kg)" hint={usarEstoqueFilamento ? "Preenchido automaticamente pelo filamento do estoque" : undefined}>
+              <Input
+                type="number"
+                step="0.01"
+                value={precoFilamentoKg}
+                onChange={(e) => setPrecoFilamentoKg(e.target.value)}
+                disabled={usarEstoqueFilamento}
+              />
+            </Field>
+            <Field label="Taxa de Falha (%)">
+              <Input type="number" value={taxaFalha} onChange={(e) => setTaxaFalha(e.target.value)} />
+            </Field>
+            <Toggle checked={salvarConfiguracoes} onChange={setSalvarConfiguracoes} label="Salvar configurações" />
+          </div>
+        )}
       </Card>
 
       {/* Mais opções */}
@@ -673,23 +755,6 @@ function CalculadoraPage() {
             <Field label="Valor do Frete (R$)">
               <Input type="number" step="0.01" value={frete} onChange={(e) => setFrete(e.target.value)} placeholder="Ex: 15.90" />
             </Field>
-            <Toggle
-              checked={incluirTaxaMarketplace}
-              onChange={setIncluirTaxaMarketplace}
-              label="Incluir taxa de marketplace"
-            />
-            {incluirTaxaMarketplace && (
-              <Field label="Plataforma">
-                <Select value={plataformaId} onChange={(e) => setPlataformaId(e.target.value)}>
-                  <option value="">Escolha a plataforma</option>
-                  {plataformas.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nome} ({(p.taxa_percentual * 100).toFixed(0)}% + {formatBRL(p.taxa_fixa)})
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            )}
           </div>
         )}
       </Card>
@@ -804,18 +869,25 @@ function CalculadoraPage() {
           )}
 
           <div className="rounded-xl bg-base-surface2 p-4 space-y-2">
-            <div className="flex justify-between items-baseline">
-              <span className="text-base-muted text-sm">Preço sugerido (unitário)</span>
-              <span className="text-2xl font-semibold text-accent-hover">{formatBRL(resultado.preco_sugerido_unit)}</span>
-            </div>
-            {resultado.preco_sugerido_marketplace_unit !== null && (
+            {resultado.preco_sugerido_marketplace_unit !== null ? (
+              <>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-base-muted text-sm">
+                    🛒 Preço com taxa {plataformaSelecionada ? `(${plataformaSelecionada.nome})` : "de marketplace"}
+                  </span>
+                  <span className="text-2xl font-semibold text-accent-hover">
+                    {formatBRL(resultado.preco_sugerido_marketplace_unit)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-base-muted text-sm">Preço sugerido (sem taxa)</span>
+                  <span className="text-base font-medium">{formatBRL(resultado.preco_sugerido_unit)}</span>
+                </div>
+              </>
+            ) : (
               <div className="flex justify-between items-baseline">
-                <span className="text-base-muted text-sm">
-                  Preço sugerido com taxa {plataformaSelecionada ? `(${plataformaSelecionada.nome})` : ""}
-                </span>
-                <span className="text-xl font-semibold text-accent-hover">
-                  {formatBRL(resultado.preco_sugerido_marketplace_unit)}
-                </span>
+                <span className="text-base-muted text-sm">Preço sugerido (unitário)</span>
+                <span className="text-2xl font-semibold text-accent-hover">{formatBRL(resultado.preco_sugerido_unit)}</span>
               </div>
             )}
             <p className="text-xs text-base-muted pt-1">
