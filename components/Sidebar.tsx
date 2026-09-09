@@ -11,16 +11,15 @@ const MENU_ATIVO = [
   { href: "/orcamentos", label: "Meus Orçamentos", icon: "📄" },
   { href: "/produtos", label: "Meus Produtos", icon: "🧩" },
   { href: "/pedidos", label: "Pedidos", icon: "🗂️" },
+  { href: "/vendas", label: "Vendas", icon: "💲" },
+  { href: "/financeiro", label: "Financeiro", icon: "📊" },
+  { href: "/relatorios", label: "Relatórios", icon: "🧾" },
+  { href: "/ranking", label: "Ranking", icon: "🏆" },
+  { href: "/outros-gastos", label: "Outros Gastos", icon: "💸" },
+  { href: "/investimentos", label: "Investimentos", icon: "📈" },
   { href: "/impressoras", label: "Impressoras", icon: "🖨️" },
   { href: "/filamentos", label: "Filamentos", icon: "🧵" },
   { href: "/insumos", label: "Insumos", icon: "📦" },
-];
-
-const MENU_EM_BREVE = [
-  { label: "Vendas", icon: "💲" },
-  { label: "Investimentos", icon: "📈" },
-  { label: "Financeiro", icon: "📊" },
-  { label: "Ranking", icon: "🏆" },
 ];
 
 export function Sidebar({ nome, papel }: { nome: string; papel: Papel }) {
@@ -61,23 +60,6 @@ export function Sidebar({ nome, papel }: { nome: string; papel: Papel }) {
             </Link>
           );
         })}
-
-        <div className="pt-3 mt-3 border-t border-base-border/60">
-          {MENU_EM_BREVE.map((item) => (
-            <div
-              key={item.label}
-              className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-sm text-base-faint cursor-not-allowed"
-            >
-              <span className="flex items-center gap-3">
-                <span className="opacity-50">{item.icon}</span>
-                {item.label}
-              </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-base-surface2 border border-base-border">
-                em breve
-              </span>
-            </div>
-          ))}
-        </div>
 
         {papel === "admin" && (
           <div className="pt-3 mt-3 border-t border-base-border/60">
