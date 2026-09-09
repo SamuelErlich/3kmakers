@@ -590,32 +590,63 @@ export default function CalculadoraPage() {
       {/* Resultado */}
       {calculado && (
         <Card title="Resultado do Cálculo" icon="✅" className="border-accent/40">
-          <div className="grid sm:grid-cols-2 gap-3 text-sm">
-            <div className="flex justify-between border-b border-base-border/60 pb-2">
-              <span className="text-base-muted">Consumo de filamento</span>
-              <span>{resultado.consumo_filamento_g.toFixed(1)} g</span>
-            </div>
-            <div className="flex justify-between border-b border-base-border/60 pb-2">
-              <span className="text-base-muted">Custo filamento</span>
-              <span>{formatBRL(resultado.custo_filamento)}</span>
-            </div>
-            <div className="flex justify-between border-b border-base-border/60 pb-2">
-              <span className="text-base-muted">Custo energia</span>
-              <span>{formatBRL(resultado.custo_energia)}</span>
-            </div>
-            <div className="flex justify-between border-b border-base-border/60 pb-2">
-              <span className="text-base-muted">Custo impressora</span>
-              <span>{formatBRL(resultado.custo_impressora)}</span>
-            </div>
-            <div className="flex justify-between border-b border-base-border/60 pb-2">
-              <span className="text-base-muted">Custo mão de obra</span>
-              <span>{formatBRL(resultado.custo_mao_obra)}</span>
-            </div>
-            <div className="flex justify-between border-b border-base-border/60 pb-2 font-medium">
-              <span>Custo total do lote</span>
-              <span>{formatBRL(resultado.custo_total)}</span>
+          <div>
+            <p className="text-xs font-medium text-base-muted uppercase tracking-wide mb-2">Custo de produção</p>
+            <div className="grid sm:grid-cols-2 gap-3 text-sm">
+              <div className="flex justify-between border-b border-base-border/60 pb-2">
+                <span className="text-base-muted">Consumo de filamento</span>
+                <span>{resultado.consumo_filamento_g.toFixed(1)} g</span>
+              </div>
+              <div className="flex justify-between border-b border-base-border/60 pb-2">
+                <span className="text-base-muted">Material</span>
+                <span>{formatBRL(resultado.custo_filamento)}</span>
+              </div>
+              <div className="flex justify-between border-b border-base-border/60 pb-2">
+                <span className="text-base-muted">Energia</span>
+                <span>{formatBRL(resultado.custo_energia)}</span>
+              </div>
+              <div className="flex justify-between border-b border-base-border/60 pb-2">
+                <span className="text-base-muted">Depreciação da impressora</span>
+                <span>{formatBRL(resultado.custo_impressora)}</span>
+              </div>
+              <div className="flex justify-between border-b border-base-border/60 pb-2 font-medium sm:col-span-2">
+                <span>Custo de produção (unitário)</span>
+                <span>{formatBRL(resultado.custo_producao_unit)}</span>
+              </div>
+              <div className="flex justify-between border-b border-base-border/60 pb-2 font-medium text-good sm:col-span-2">
+                <span>Lucro ({lucroDesejado}%)</span>
+                <span>{formatBRL(resultado.lucro_unit)}</span>
+              </div>
             </div>
           </div>
+
+          {(Number(custosExtras) > 0 || Number(frete) > 0 || resultado.custo_mao_obra > 0) && (
+            <div>
+              <p className="text-xs font-medium text-base-muted uppercase tracking-wide mb-2">
+                Serviços e custos fixos (sem markup)
+              </p>
+              <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                {resultado.custo_mao_obra > 0 && (
+                  <div className="flex justify-between border-b border-base-border/60 pb-2">
+                    <span className="text-base-muted">Mão de obra</span>
+                    <span>{formatBRL(resultado.custo_mao_obra)}</span>
+                  </div>
+                )}
+                {Number(custosExtras) > 0 && (
+                  <div className="flex justify-between border-b border-base-border/60 pb-2">
+                    <span className="text-base-muted">Extras</span>
+                    <span>{formatBRL(Number(custosExtras))}</span>
+                  </div>
+                )}
+                {Number(frete) > 0 && (
+                  <div className="flex justify-between border-b border-base-border/60 pb-2">
+                    <span className="text-base-muted">Frete</span>
+                    <span>{formatBRL(Number(frete))}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="rounded-xl bg-base-surface2 p-4 space-y-2">
             <div className="flex justify-between items-baseline">
@@ -632,6 +663,9 @@ export default function CalculadoraPage() {
                 </span>
               </div>
             )}
+            <p className="text-xs text-base-muted pt-1">
+              Custo total do lote (sem lucro): {formatBRL(resultado.custo_total)}
+            </p>
           </div>
 
           {salvo ? (
