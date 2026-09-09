@@ -78,7 +78,6 @@ function CalculadoraPage() {
   const [custosExtras, setCustosExtras] = useState("0");
 
   // ---- resultado / salvar ----
-  const [calculado, setCalculado] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -145,7 +144,6 @@ function CalculadoraPage() {
         setHorasPos(String(Math.floor((o.tempo_pos_processamento_min ?? 0) / 60)));
         setMinutosPos(String((o.tempo_pos_processamento_min ?? 0) % 60));
         setCustosExtras(String(o.custos_extra));
-        setCalculado(true);
       }
       setCarregandoRegistro(false);
     } else if (produtoIdParam) {
@@ -287,26 +285,27 @@ function CalculadoraPage() {
     plataformaSelecionada,
   ]);
 
-  function calcular() {
-    if (!nomePeca.trim()) {
-      setErro("Preencha o nome da peça.");
-      return;
-    }
-    if (!pesoG || Number(pesoG) <= 0) {
-      setErro("Preencha o peso da peça.");
-      return;
-    }
-    setErro(null);
-    setCalculado(true);
+  // se o resultado mudou (usuário editou algo), o aviso "salvo" sai de cena e
+  // o valor ao vivo volta a aparecer — sem precisar clicar em "Novo cálculo"
+  useEffect(() => {
     setSalvo(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultado]);
 
-    if (salvarConfiguracoes && typeof window !== "undefined") {
-      localStorage.setItem(
-        LOCAL_STORAGE_KEY,
-        JSON.stringify({ precoKwh, precoFilamentoKg, taxaFalha, lucroDesejado, valorHoraPessoal, impressoraId })
-      );
-    }
-  }
+  // o resultado fica visível assim que os dois campos mínimos estão preenchidos —
+  // não existe mais um botão "Calcular": qualquer alteração (inclusive ligar/desligar
+  // a taxa de marketplace) já atualiza o valor final na hora.
+  const pronto = nomePeca.trim() !== "" && Number(pesoG) > 0;
+
+  // salva os últimos parâmetros usados (pra próxima vez que abrir a Calculadora), sem precisar de botão
+  useEffect(() => {
+    if (!salvarConfiguracoes || typeof window === "undefined") return;
+    localStorage.setItem(
+      LOCAL_STORAGE_KEY,
+      JSON.stringify({ precoKwh, precoFilamentoKg, taxaFalha, lucroDesejado, valorHoraPessoal, impressoraId })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [salvarConfiguracoes, precoKwh, precoFilamentoKg, taxaFalha, lucroDesejado, valorHoraPessoal, impressoraId]);
 
   function novoCalculo() {
     setEditandoId(null);
@@ -329,13 +328,16 @@ function CalculadoraPage() {
     setHorasPos("0");
     setMinutosPos("0");
     setCustosExtras("0");
-    setCalculado(false);
     setSalvo(false);
     setErro(null);
     if (editarId || produtoIdParam) router.push("/calculadora");
   }
 
   async function salvarOrcamento() {
+    if (!pronto) {
+      setErro("Preencha o nome da peça e o peso antes de salvar.");
+      return;
+    }
     setSalvando(true);
     setErro(null);
     try {
@@ -733,13 +735,15 @@ function CalculadoraPage() {
 
         {erro && <p className="text-sm text-bad">{erro}</p>}
 
-        <Button type="button" onClick={calcular} className="w-full">
-          🧮 Calcular
-        </Button>
+        {!pronto && (
+          <p className="text-sm text-base-muted text-center py-2">
+            Preencha o nome da peça e o peso lá em cima pra ver o resultado calculado ao vivo aqui embaixo.
+          </p>
+        )}
       </Card>
 
-      {/* Resultado */}
-      {calculado && (
+      {/* Resultado — sempre ao vivo, atualiza sozinho a cada alteração */}
+      {pronto && (
         <Card title="Resultado do Cálculo" icon="✅" className="border-accent/40">
           <div>
             <p className="text-xs font-medium text-base-muted uppercase tracking-wide mb-2">Custo de produção</p>
