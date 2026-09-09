@@ -61,10 +61,11 @@ create table if not exists config (
 insert into config (id) values (1) on conflict (id) do nothing;
 
 -- ------------------------------------------------------------
--- IMPRESSORAS
+-- IMPRESSORAS (pessoal — cada usuário tem as suas)
 -- ------------------------------------------------------------
 create table if not exists impressoras (
   id uuid primary key default gen_random_uuid(),
+  usuario_id uuid not null references profiles(id) on delete cascade,
   nome text not null,
   valor_compra numeric not null default 0,
   vida_util_horas numeric not null default 5000,
@@ -74,10 +75,11 @@ create table if not exists impressoras (
 );
 
 -- ------------------------------------------------------------
--- FILAMENTOS (estoque)
+-- FILAMENTOS (estoque pessoal — cada usuário tem o seu)
 -- ------------------------------------------------------------
 create table if not exists filamentos (
   id uuid primary key default gen_random_uuid(),
+  usuario_id uuid not null references profiles(id) on delete cascade,
   material text not null,
   cor_marca text,
   peso_bobina_g numeric not null default 1000,
@@ -89,10 +91,11 @@ create table if not exists filamentos (
 );
 
 -- ------------------------------------------------------------
--- INSUMOS (embalagem, etiqueta, suporte etc. — só estoque)
+-- INSUMOS (embalagem, etiqueta, suporte etc. — estoque pessoal)
 -- ------------------------------------------------------------
 create table if not exists insumos (
   id uuid primary key default gen_random_uuid(),
+  usuario_id uuid not null references profiles(id) on delete cascade,
   nome text not null,
   unidade text not null default 'un',
   preco_unitario numeric not null default 0,
@@ -268,47 +271,47 @@ create policy "config_select" on config for select
 create policy "config_update" on config for update
   using (is_admin());
 
--- cadastros compartilhados: todo autenticado lê, só admin escreve
-create policy "impressoras_select" on impressoras for select using (auth.role() = 'authenticated');
-create policy "impressoras_insert" on impressoras for insert with check (is_admin());
-create policy "impressoras_update" on impressoras for update using (is_admin());
-create policy "impressoras_delete" on impressoras for delete using (is_admin());
+-- tudo abaixo é 100% pessoal: cada um vê/edita só o que é seu.
+-- só Configurações (parâmetros gerais) e Plataformas continuam
+-- compartilhadas e só-admin-edita.
+create policy "impressoras_all" on impressoras for all
+  using (usuario_id = auth.uid())
+  with check (usuario_id = auth.uid());
 
-create policy "filamentos_select" on filamentos for select using (auth.role() = 'authenticated');
-create policy "filamentos_insert" on filamentos for insert with check (is_admin());
-create policy "filamentos_update" on filamentos for update using (is_admin());
-create policy "filamentos_delete" on filamentos for delete using (is_admin());
+create policy "filamentos_all" on filamentos for all
+  using (usuario_id = auth.uid())
+  with check (usuario_id = auth.uid());
 
-create policy "insumos_select" on insumos for select using (auth.role() = 'authenticated');
-create policy "insumos_insert" on insumos for insert with check (is_admin());
-create policy "insumos_update" on insumos for update using (is_admin());
-create policy "insumos_delete" on insumos for delete using (is_admin());
+create policy "insumos_all" on insumos for all
+  using (usuario_id = auth.uid())
+  with check (usuario_id = auth.uid());
 
+-- plataformas de venda continuam compartilhadas (é a mesma taxa pra
+-- todo mundo): todo autenticado lê, só admin escreve
 create policy "plataformas_select" on plataformas for select using (auth.role() = 'authenticated');
 create policy "plataformas_insert" on plataformas for insert with check (is_admin());
 create policy "plataformas_update" on plataformas for update using (is_admin());
 create policy "plataformas_delete" on plataformas for delete using (is_admin());
 
--- tabelas "pessoais": dono vê/edita o que é seu, admin vê/edita tudo
 create policy "produtos_all" on produtos for all
-  using (usuario_id = auth.uid() or is_admin())
-  with check (usuario_id = auth.uid() or is_admin());
+  using (usuario_id = auth.uid())
+  with check (usuario_id = auth.uid());
 
 create policy "orcamentos_all" on orcamentos for all
-  using (usuario_id = auth.uid() or is_admin())
-  with check (usuario_id = auth.uid() or is_admin());
+  using (usuario_id = auth.uid())
+  with check (usuario_id = auth.uid());
 
 create policy "vendas_all" on vendas for all
-  using (usuario_id = auth.uid() or is_admin())
-  with check (usuario_id = auth.uid() or is_admin());
+  using (usuario_id = auth.uid())
+  with check (usuario_id = auth.uid());
 
 create policy "outros_gastos_all" on outros_gastos for all
-  using (usuario_id = auth.uid() or is_admin())
-  with check (usuario_id = auth.uid() or is_admin());
+  using (usuario_id = auth.uid())
+  with check (usuario_id = auth.uid());
 
 create policy "investimentos_all" on investimentos for all
-  using (usuario_id = auth.uid() or is_admin())
-  with check (usuario_id = auth.uid() or is_admin());
+  using (usuario_id = auth.uid())
+  with check (usuario_id = auth.uid());
 
 -- ------------------------------------------------------------
 -- Dados iniciais (opcional, mas ajuda a testar de cara)
