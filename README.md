@@ -1,33 +1,58 @@
-# Controle 3D — Fase 1 + Fase 2
+# Controle 3D — sistema completo (Fases 1, 2 e 3)
 
-Precificação, orçamentos, pedidos e vendas para produção de impressão 3D.
-Stack: **Next.js 14 (App Router)** + **Supabase** (banco Postgres + login) + Tailwind.
+Precificação, orçamentos, pedidos, vendas e relatórios para produção de impressão 3D.
+Stack: **Next.js 14 (App Router)** + **Supabase** (banco Postgres + login) + Tailwind + Recharts.
 
-## O que já funciona
+## O que o sistema faz
 
-- Login/cadastro com papel Admin/Operador (cada um com painel pessoal)
+- Login/cadastro com papel Admin/Operador (cada um com painel pessoal; admin vê tudo com o toggle
+  "Ver de todos" nas telas que têm dado por usuário)
 - Cadastro de Impressoras, Filamentos (com estoque e alerta), Insumos (estoque) e Plataformas (taxas)
 - Configurações gerais (mão de obra padrão, margem padrão, alerta de estoque) — só admin
-- **Calculadora completa**: monta o orçamento, calcula custo e preço sugerido (com ou sem taxa de
-  marketplace) e salva. Lucro é markup sobre o custo de produção (não margem sobre preço final).
-- **Meus Orçamentos**: lista/histórico completo, busca por peça/cliente, filtro por status, troca de
-  status direto na lista, editar (reabre a Calculadora com tudo preenchido), duplicar, excluir
-- **Meus Produtos**: modelos reaproveitáveis (nome, foto, peso, tempo, filamento padrão) — um botão
-  "Usar na Calculadora" carrega tudo de novo sem redigitar. Também dá pra salvar um cálculo novo
-  direto como Produto.
-- **Pedidos**: Kanban com os status a partir de "Em produção" (Em produção → Pronto → Vendido →
-  Entregue → Cancelado), com botões de avançar/voltar etapa
+- **Calculadora**: monta o orçamento, calcula custo e preço sugerido (com ou sem taxa de marketplace)
+  e salva. Lucro é markup sobre o custo de produção (material + energia + depreciação), não margem
+  sobre preço final — por isso o slider de lucro pode passar de 100% sem quebrar a conta.
+- **Meus Orçamentos**: histórico completo, busca, filtro por status, troca de status na lista,
+  editar (reabre a Calculadora preenchida), duplicar, excluir
+- **Meus Produtos**: modelos reaproveitáveis — "Usar na Calculadora" carrega tudo de novo, e dá pra
+  "Salvar como Produto" direto depois de calcular
+- **Pedidos**: Kanban (Em produção → Pronto → Vendido → Entregue → Cancelado) com avançar/voltar etapa
+- **Vendas**: registra a venda de um Pedido, calculando receita líquida já descontando a taxa da
+  plataforma escolhida; ao salvar, o Pedido correspondente avança sozinho pro status "Vendido"
+- **Outros Gastos** e **Investimentos**: despesas soltas e aportes de capital, separados
+- **Financeiro**: cartões (receita, custo, lucro líquido, ROI) + gráfico mensal por ano
+- **Ranking**: produtos mais vendidos ou mais lucrativos
+- **Relatórios**: por mês ou período livre, agrupado por plataforma e por item, com exportação CSV
 
-Os menus "Vendas", "Investimentos", "Financeiro" e "Ranking" aparecem como "em breve" — são a próxima fase.
+## Como tudo se conecta (sincronização)
+
+```
+Calculadora → Orçamento salvo (status: Orçamento)
+            → muda status pra "Em produção" em Meus Orçamentos → aparece em Pedidos
+            → avança o Kanban até "Pronto"
+            → registra a Venda (escolhe o Pedido) → status vira "Vendido" sozinho
+            → a Venda alimenta Financeiro, Ranking e Relatórios ao mesmo tempo
+```
+
+Não existe cálculo duplicado: a Calculadora, a edição de um orçamento e o carregamento de um Produto
+usam a mesma função em `lib/calc.ts`. Vendas usa a tabela `plataformas` (a mesma cadastrada em
+Configurações) — nenhuma taxa fica "hardcoded" em um lugar só.
 
 ## Decisões que valem a pena conferir
 
-- **Editar um orçamento não desconta o estoque de filamento de novo.** O desconto só acontece na
-  criação. Se você mudar o peso/quantidade num orçamento já salvo, ajuste o estoque manualmente em
-  Filamentos se precisar.
-- **Duplicar** um orçamento sempre volta o status para "Orçamento", mesmo duplicando um Pedido.
-- Em Pedidos, o botão "Voltar" nunca retorna para o status "Orçamento" — isso só acontece
-  editando o registro em Meus Orçamentos.
+- **Editar um orçamento não desconta o estoque de filamento de novo** (só desconta na criação).
+- **Duplicar** um orçamento sempre volta o status para "Orçamento".
+- Em Pedidos, "Voltar" nunca retorna para "Orçamento" — só editando em Meus Orçamentos.
+- **Uma Venda só pode ser registrada uma vez por Pedido** (o seletor de "Pedido" em Vendas some da
+  lista assim que a venda é registrada). Se precisar vender o mesmo Pedido de novo (ex: reposição),
+  duplique o orçamento original em Meus Orçamentos primeiro.
+- **Excluir uma Venda não reverte o status do Pedido** de volta sozinho — ajuste manualmente em
+  Meus Orçamentos se precisar.
+- O card de **Investimentos** no Financeiro soma o valor de compra de todas as impressoras
+  cadastradas (recurso compartilhado da oficina) + os investimentos avulsos do escopo selecionado
+  (seus ou de todos, conforme o toggle).
+- A exportação de Relatórios é em **CSV** (abre direto no Excel/Google Sheets). Se preferir um PDF
+  formatado, é um ajuste rápido de adicionar depois.
 
 ## 1. Criar o projeto no Supabase
 
@@ -73,6 +98,11 @@ app/
     orcamentos/               → lista/histórico
     produtos/                 → modelos reaproveitáveis
     pedidos/                  → kanban
+    vendas/                   → registra venda a partir de um pedido
+    outros-gastos/, investimentos/
+    financeiro/               → painel + gráfico mensal
+    ranking/                  → produtos mais vendidos/lucrativos
+    relatorios/               → por mês ou período livre, com exportação CSV
     impressoras/, filamentos/, insumos/
     configuracoes/            → só admin (parâmetros + plataformas)
 lib/
@@ -83,8 +113,7 @@ lib/
 sql/schema.sql               → schema completo (todas as fases já incluídas)
 ```
 
-## Próxima fase
+## Sistema completo — o que ajustar daqui pra frente é refinamento
 
-- **Fase 3**: Vendas (por plataforma), Investimentos, Financeiro (painel com gráfico mensal), Ranking,
-  Relatórios (mês ou período livre, exportável)
-
+As três fases planejadas estão entregues. Próximos ajustes tendem a ser pontuais: relatório em PDF,
+exportação por período em Vendas, permissões mais finas por operador, etc. — é só falar o que precisa.
