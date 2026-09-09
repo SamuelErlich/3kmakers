@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
 import { Button, Field, Input, Select, Toggle } from "@/components/ui/Field";
-import { formatBRL } from "@/lib/calc";
+import { calcularVenda, formatBRL } from "@/lib/calc";
 import type { Orcamento, Papel, Plataforma } from "@/lib/types";
 
 interface Venda {
@@ -125,19 +125,23 @@ export default function VendasPage() {
   // prévia de receita/custo/lucro antes de salvar
   const previa = useMemo(() => {
     if (!orcamentoSelecionado) return null;
-    const qtde = Number(qtdeVendida) || 0;
-    const preco = Number(precoRealizado) || 0;
-    const receitaBruta = qtde * preco;
-    const taxaPct = plataformaSelecionada?.taxa_percentual ?? 0;
-    const taxaFixa = plataformaSelecionada?.taxa_fixa ?? 0;
-    const taxaValor = receitaBruta * taxaPct + qtde * taxaFixa;
-    const receita = receitaBruta - taxaValor;
     const custoUnitOriginal =
       orcamentoSelecionado.qtde > 0 ? (orcamentoSelecionado.custo_total ?? 0) / orcamentoSelecionado.qtde : 0;
-    const custoTotal = custoUnitOriginal * qtde;
-    const lucro = receita - custoTotal;
-    const margem = receita > 0 ? lucro / receita : 0;
-    return { receitaBruta, taxaValor, receita, custoTotal, lucro, margem };
+    const r = calcularVenda({
+      qtde: Number(qtdeVendida) || 0,
+      precoUnit: Number(precoRealizado) || 0,
+      custoUnit: custoUnitOriginal,
+      taxaPercentual: plataformaSelecionada?.taxa_percentual,
+      taxaFixa: plataformaSelecionada?.taxa_fixa,
+    });
+    return {
+      receitaBruta: r.receitaBruta,
+      taxaValor: r.taxaValor,
+      receita: r.receita,
+      custoTotal: r.custoTotal,
+      lucro: r.lucro,
+      margem: r.margem,
+    };
   }, [orcamentoSelecionado, qtdeVendida, precoRealizado, plataformaSelecionada]);
 
   async function registrarVenda(e: React.FormEvent) {

@@ -468,6 +468,7 @@ function CalculadoraPage() {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return;
+    const qtdeAtual = Number(qtde) || 1;
     const { error } = await supabase.from("produtos").insert({
       usuario_id: user.id,
       nome: nomePeca || "Produto sem nome",
@@ -476,12 +477,16 @@ function CalculadoraPage() {
       tempo_impressao_min: (Number(horasImpressao) || 0) * 60 + (Number(minutosImpressao) || 0),
       filamento_id: usarEstoqueFilamento ? filamentoId || null : null,
       observacoes: observacoes || null,
+      // preço do cálculo atual — é isso que habilita o botão "Vender" direto em Meus Produtos
+      custo_unitario: resultado.custo_total / qtdeAtual,
+      preco_final_unit: resultado.preco_sugerido_marketplace_unit ?? resultado.preco_sugerido_unit,
+      lucro_desejado_pct: Number(lucroDesejado) || 0,
     });
     if (error) {
       setErro("Não foi possível salvar como produto.");
       return;
     }
-    alert("Produto salvo! Você já pode reutilizá-lo em Meus Produtos.");
+    alert("Produto salvo com o preço calculado! Você já pode vender direto em Meus Produtos.");
   }
 
   if (carregandoApoio) {

@@ -147,3 +147,39 @@ export function formatBRL(valor: number | null | undefined): string {
   if (valor === null || valor === undefined || Number.isNaN(valor)) return "R$ 0,00";
   return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
+
+/**
+ * Cálculo de uma venda — usado tanto pela tela de Vendas (a partir de um Pedido)
+ * quanto pelo botão "Vender" em Meus Produtos (venda direta, sem passar pela
+ * Calculadora de novo). Mantido num lugar só pra nunca haver duas fórmulas
+ * diferentes calculando a mesma coisa.
+ */
+export interface CalculoVendaInput {
+  qtde: number;
+  precoUnit: number;
+  custoUnit: number;
+  taxaPercentual?: number; // 0-1 (ex: 0.20)
+  taxaFixa?: number;
+}
+
+export interface CalculoVendaResultado {
+  receitaBruta: number;
+  taxaValor: number;
+  receita: number;
+  custoTotal: number;
+  lucro: number;
+  margem: number;
+}
+
+export function calcularVenda(input: CalculoVendaInput): CalculoVendaResultado {
+  const qtde = input.qtde > 0 ? input.qtde : 0;
+  const receitaBruta = qtde * input.precoUnit;
+  const taxaPct = input.taxaPercentual ?? 0;
+  const taxaFixa = input.taxaFixa ?? 0;
+  const taxaValor = receitaBruta * taxaPct + qtde * taxaFixa;
+  const receita = receitaBruta - taxaValor;
+  const custoTotal = qtde * input.custoUnit;
+  const lucro = receita - custoTotal;
+  const margem = receita > 0 ? lucro / receita : 0;
+  return { receitaBruta, taxaValor, receita, custoTotal, lucro, margem };
+}

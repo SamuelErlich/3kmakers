@@ -125,6 +125,11 @@ create table if not exists produtos (
   tempo_impressao_min numeric,
   filamento_id uuid references filamentos(id),
   observacoes text,
+  -- preço salvo do último cálculo — habilita o botão "Vender" direto
+  -- em Meus Produtos, sem precisar recalcular na Calculadora
+  custo_unitario numeric,
+  preco_final_unit numeric,
+  lucro_desejado_pct numeric,
   criado_em timestamptz not null default now()
 );
 

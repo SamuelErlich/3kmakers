@@ -60,6 +60,21 @@ export type StatusOrcamento =
   | "entregue"
   | "cancelado";
 
+export interface Produto {
+  id: string;
+  usuario_id: string;
+  nome: string;
+  foto_url: string | null;
+  peso_g: number | null;
+  tempo_impressao_min: number | null;
+  filamento_id: string | null;
+  observacoes: string | null;
+  custo_unitario: number | null;
+  preco_final_unit: number | null;
+  lucro_desejado_pct: number | null;
+  criado_em: string;
+}
+
 export interface Orcamento {
   id: string;
   usuario_id: string;

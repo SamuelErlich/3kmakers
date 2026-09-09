@@ -1,28 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
 import { Button, Field, Input, Select } from "@/components/ui/Field";
-import type { Filamento } from "@/lib/types";
-
-interface Produto {
-  id: string;
-  usuario_id: string;
-  nome: string;
-  foto_url: string | null;
-  peso_g: number | null;
-  tempo_impressao_min: number | null;
-  filamento_id: string | null;
-  observacoes: string | null;
-  criado_em: string;
-}
+import { calcularVenda, formatBRL } from "@/lib/calc";
+import type { Filamento, Plataforma, Produto } from "@/lib/types";
 
 export default function ProdutosPage() {
   const supabase = createClient();
   const [lista, setLista] = useState<Produto[]>([]);
   const [filamentos, setFilamentos] = useState<Filamento[]>([]);
+  const [plataformas, setPlataformas] = useState<Plataforma[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [editando, setEditando] = useState<Produto | null>(null);
   const [mostrarForm, setMostrarForm] = useState(false);
@@ -38,14 +28,30 @@ export default function ProdutosPage() {
   });
   const [salvando, setSalvando] = useState(false);
 
+  // ---- venda rápida direto do produto ----
+  const [vendendoId, setVendendoId] = useState<string | null>(null);
+  const [venda, setVenda] = useState({
+    cliente: "",
+    plataformaId: "",
+    qtde: "1",
+    precoRealizado: "",
+    statusPagamento: "pago" as "pago" | "aguardando" | "parcial",
+    dataVenda: new Date().toISOString().slice(0, 10),
+  });
+  const [salvandoVenda, setSalvandoVenda] = useState(false);
+  const [erroVenda, setErroVenda] = useState<string | null>(null);
+  const [vendaConcluidaId, setVendaConcluidaId] = useState<string | null>(null);
+
   async function carregar() {
     setCarregando(true);
-    const [{ data: prods }, { data: fils }] = await Promise.all([
+    const [{ data: prods }, { data: fils }, { data: plats }] = await Promise.all([
       supabase.from("produtos").select("*").order("criado_em", { ascending: false }),
       supabase.from("filamentos").select("*").order("material"),
+      supabase.from("plataformas").select("*").eq("ativa", true).order("nome"),
     ]);
     setLista((prods as Produto[]) ?? []);
     setFilamentos((fils as Filamento[]) ?? []);
+    setPlataformas((plats as Plataforma[]) ?? []);
     setCarregando(false);
   }
 
@@ -131,13 +137,130 @@ export default function ProdutosPage() {
     carregar();
   }
 
+  // ---- venda rápida ----
+  function abrirVenda(p: Produto) {
+    setVendendoId(p.id);
+    setVendaConcluidaId(null);
+    setErroVenda(null);
+    setVenda({
+      cliente: "",
+      // já escolhe a primeira plataforma sozinho — senão a taxa fica em 0% e o
+      // preço parece "não mudar" até escolher uma (mesmo motivo do bug da Calculadora)
+      plataformaId: plataformas.length > 0 ? plataformas[0].id : "",
+      qtde: "1",
+      precoRealizado: p.preco_final_unit ? p.preco_final_unit.toFixed(2) : "",
+      statusPagamento: "pago",
+      dataVenda: new Date().toISOString().slice(0, 10),
+    });
+  }
+
+  function fecharVenda() {
+    setVendendoId(null);
+    setErroVenda(null);
+  }
+
+  const produtoVendendo = lista.find((p) => p.id === vendendoId);
+  const plataformaVenda = plataformas.find((p) => p.id === venda.plataformaId);
+
+  const previaVenda = useMemo(() => {
+    if (!produtoVendendo || produtoVendendo.custo_unitario == null) return null;
+    return calcularVenda({
+      qtde: Number(venda.qtde) || 0,
+      precoUnit: Number(venda.precoRealizado) || 0,
+      custoUnit: produtoVendendo.custo_unitario,
+      taxaPercentual: plataformaVenda?.taxa_percentual,
+      taxaFixa: plataformaVenda?.taxa_fixa,
+    });
+  }, [produtoVendendo, venda.qtde, venda.precoRealizado, plataformaVenda]);
+
+  async function confirmarVenda() {
+    if (!produtoVendendo || !previaVenda || produtoVendendo.custo_unitario == null) return;
+    setSalvandoVenda(true);
+    setErroVenda(null);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setErroVenda("Sessão expirada.");
+      setSalvandoVenda(false);
+      return;
+    }
+
+    const qtdeVendida = Number(venda.qtde) || 1;
+
+    // cria o orçamento já como "vendido" — pula Orçamento/Pedido, direto pro resultado
+    const { data: novoOrcamento, error: erroOrcamento } = await supabase
+      .from("orcamentos")
+      .insert({
+        usuario_id: user.id,
+        produto_id: produtoVendendo.id,
+        nome_peca: produtoVendendo.nome,
+        cliente: venda.cliente || null,
+        foto_url: produtoVendendo.foto_url,
+        qtde: qtdeVendida,
+        peso_g: produtoVendendo.peso_g ?? 0,
+        tempo_impressao_min: produtoVendendo.tempo_impressao_min ?? 0,
+        filamento_id: produtoVendendo.filamento_id,
+        lucro_desejado_pct: produtoVendendo.lucro_desejado_pct ?? 0,
+        incluir_taxa_marketplace: !!venda.plataformaId,
+        plataforma_id: venda.plataformaId || null,
+        status: "vendido",
+        custo_total: produtoVendendo.custo_unitario * qtdeVendida,
+        preco_sugerido_unit: produtoVendendo.preco_final_unit,
+        preco_final_unit: produtoVendendo.preco_final_unit,
+      })
+      .select()
+      .single();
+
+    if (erroOrcamento || !novoOrcamento) {
+      setErroVenda(erroOrcamento?.message ?? "Não foi possível registrar a venda.");
+      setSalvandoVenda(false);
+      return;
+    }
+
+    const { error: erroVendaInsert } = await supabase.from("vendas").insert({
+      orcamento_id: novoOrcamento.id,
+      usuario_id: user.id,
+      plataforma_id: venda.plataformaId || null,
+      qtde_vendida: qtdeVendida,
+      preco_realizado_unit: Number(venda.precoRealizado) || 0,
+      receita: previaVenda.receita,
+      custo_total: previaVenda.custoTotal,
+      lucro: previaVenda.lucro,
+      margem: previaVenda.margem,
+      status_pagamento: venda.statusPagamento,
+      data_venda: venda.dataVenda,
+    });
+
+    if (erroVendaInsert) {
+      setErroVenda(erroVendaInsert.message);
+      setSalvandoVenda(false);
+      return;
+    }
+
+    // desconta o estoque do filamento padrão do produto, se houver
+    if (produtoVendendo.filamento_id && produtoVendendo.peso_g) {
+      const fil = filamentos.find((f) => f.id === produtoVendendo.filamento_id);
+      if (fil) {
+        const consumo = produtoVendendo.peso_g * qtdeVendida;
+        await supabase
+          .from("filamentos")
+          .update({ estoque_atual_g: Math.max(fil.estoque_atual_g - consumo, 0) })
+          .eq("id", fil.id);
+      }
+    }
+
+    setSalvandoVenda(false);
+    setVendaConcluidaId(produtoVendendo.id);
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Meus Produtos</h1>
           <p className="text-sm text-base-muted mt-1">
-            Modelos que você já calculou antes — reaproveite direto na Calculadora sem digitar tudo de novo.
+            Modelos que você já calculou antes — reaproveite na Calculadora ou venda direto, sem recalcular.
           </p>
         </div>
         {!mostrarForm && (
@@ -201,6 +324,13 @@ export default function ProdutosPage() {
               </Field>
             </div>
 
+            {!editando && (
+              <p className="text-xs text-base-muted sm:col-span-2">
+                Cadastrando manualmente aqui, o produto fica <strong>sem preço</strong> — o botão "Vender"
+                só funciona em produtos salvos a partir de um cálculo feito na Calculadora.
+              </p>
+            )}
+
             <div className="sm:col-span-2 flex gap-2">
               <Button type="submit" disabled={salvando}>
                 {salvando ? "Salvando..." : editando ? "Salvar alterações" : "Adicionar produto"}
@@ -222,40 +352,143 @@ export default function ProdutosPage() {
           </p>
         ) : (
           <div className="grid sm:grid-cols-2 gap-3">
-            {lista.map((p) => (
-              <div key={p.id} className="flex gap-3 border border-base-border rounded-xl p-3">
-                {p.foto_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.foto_url} alt={p.nome} className="w-16 h-16 rounded-lg object-cover shrink-0" />
-                ) : (
-                  <div className="w-16 h-16 rounded-lg bg-base-surface2 flex items-center justify-center text-2xl shrink-0">
-                    🧊
+            {lista.map((p) => {
+              const temPreco = p.preco_final_unit != null && p.custo_unitario != null;
+              const vendaAberta = vendendoId === p.id;
+              const vendida = vendaConcluidaId === p.id;
+              return (
+                <div key={p.id} className="border border-base-border rounded-xl p-3 space-y-3">
+                  <div className="flex gap-3">
+                    {p.foto_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.foto_url} alt={p.nome} className="w-16 h-16 rounded-lg object-cover shrink-0" />
+                    ) : (
+                      <div className="w-16 h-16 rounded-lg bg-base-surface2 flex items-center justify-center text-2xl shrink-0">
+                        🧊
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div>
+                        <p className="font-medium truncate">{p.nome}</p>
+                        <p className="text-xs text-base-muted">
+                          {p.peso_g ? `${p.peso_g}g` : "peso não informado"} ·{" "}
+                          {p.tempo_impressao_min ? `${Math.floor(p.tempo_impressao_min / 60)}h${p.tempo_impressao_min % 60}min` : "tempo não informado"}
+                        </p>
+                        {temPreco ? (
+                          <p className="text-sm font-medium text-accent-hover mt-0.5">{formatBRL(p.preco_final_unit)}</p>
+                        ) : (
+                          <p className="text-xs text-warn mt-0.5">sem preço calculado ainda</p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="primary"
+                          className="!px-3 !py-1.5 text-xs !bg-good !bg-none"
+                          disabled={!temPreco}
+                          title={!temPreco ? "Calcule o preço primeiro na Calculadora" : undefined}
+                          onClick={() => abrirVenda(p)}
+                        >
+                          💲 Vender
+                        </Button>
+                        <Link href={`/calculadora?produto=${p.id}`}>
+                          <Button variant="secondary" className="!px-3 !py-1.5 text-xs">
+                            Usar na Calculadora
+                          </Button>
+                        </Link>
+                        <Button variant="secondary" className="!px-3 !py-1.5 text-xs" onClick={() => abrirEdicao(p)}>
+                          Editar
+                        </Button>
+                        <Button variant="danger" className="!px-3 !py-1.5 text-xs" onClick={() => excluir(p.id)}>
+                          Excluir
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                )}
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div>
-                    <p className="font-medium truncate">{p.nome}</p>
-                    <p className="text-xs text-base-muted">
-                      {p.peso_g ? `${p.peso_g}g` : "peso não informado"} ·{" "}
-                      {p.tempo_impressao_min ? `${Math.floor(p.tempo_impressao_min / 60)}h${p.tempo_impressao_min % 60}min` : "tempo não informado"}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Link href={`/calculadora?produto=${p.id}`}>
-                      <Button variant="primary" className="!px-3 !py-1.5 text-xs">
-                        Usar na Calculadora
-                      </Button>
-                    </Link>
-                    <Button variant="secondary" className="!px-3 !py-1.5 text-xs" onClick={() => abrirEdicao(p)}>
-                      Editar
-                    </Button>
-                    <Button variant="danger" className="!px-3 !py-1.5 text-xs" onClick={() => excluir(p.id)}>
-                      Excluir
-                    </Button>
-                  </div>
+
+                  {vendida && (
+                    <div className="flex items-center justify-between gap-2 text-good text-sm bg-good/10 rounded-xl px-3 py-2.5">
+                      <span>✅ Venda registrada!</span>
+                      <Link href="/vendas" className="font-medium underline shrink-0">
+                        Ver em Vendas
+                      </Link>
+                    </div>
+                  )}
+
+                  {vendaAberta && !vendida && (
+                    <div className="border-t border-base-border pt-3 space-y-3">
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        <Field label="Quantidade vendida">
+                          <Input
+                            type="number"
+                            min={1}
+                            value={venda.qtde}
+                            onChange={(e) => setVenda({ ...venda, qtde: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="Preço realizado (unitário)">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={venda.precoRealizado}
+                            onChange={(e) => setVenda({ ...venda, precoRealizado: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="Plataforma">
+                          <Select value={venda.plataformaId} onChange={(e) => setVenda({ ...venda, plataformaId: e.target.value })}>
+                            <option value="">Venda direta (sem taxa)</option>
+                            {plataformas.map((pl) => (
+                              <option key={pl.id} value={pl.id}>
+                                {pl.nome} ({(pl.taxa_percentual * 100).toFixed(0)}% + {formatBRL(pl.taxa_fixa)})
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field label="Data da venda">
+                          <Input
+                            type="date"
+                            value={venda.dataVenda}
+                            onChange={(e) => setVenda({ ...venda, dataVenda: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="Cliente (opcional)">
+                          <Input value={venda.cliente} onChange={(e) => setVenda({ ...venda, cliente: e.target.value })} />
+                        </Field>
+                        <Field label="Status do pagamento">
+                          <Select
+                            value={venda.statusPagamento}
+                            onChange={(e) => setVenda({ ...venda, statusPagamento: e.target.value as any })}
+                          >
+                            <option value="pago">Pago</option>
+                            <option value="aguardando">Aguardando</option>
+                            <option value="parcial">Parcial</option>
+                          </Select>
+                        </Field>
+                      </div>
+
+                      {previaVenda && (
+                        <div className="rounded-xl bg-base-surface2 p-3 flex items-center justify-between text-sm">
+                          <span className="text-base-muted">Lucro nessa venda</span>
+                          <span className="font-semibold text-good">
+                            {formatBRL(previaVenda.lucro)} ({(previaVenda.margem * 100).toFixed(1)}% margem)
+                          </span>
+                        </div>
+                      )}
+
+                      {erroVenda && <p className="text-sm text-bad">{erroVenda}</p>}
+
+                      <div className="flex gap-2">
+                        <Button onClick={confirmarVenda} disabled={salvandoVenda} className="!bg-good !bg-none">
+                          {salvandoVenda ? "Registrando..." : "Confirmar venda"}
+                        </Button>
+                        <Button variant="secondary" onClick={fecharVenda}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>
