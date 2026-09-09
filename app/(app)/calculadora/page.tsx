@@ -382,10 +382,11 @@ function CalculadoraPage() {
       if (foto) {
         const nomeArquivo = `${user.id}/${Date.now()}-${foto.name}`;
         const { error: upErr } = await supabase.storage.from("pecas").upload(nomeArquivo, foto);
-        if (!upErr) {
-          const { data: pub } = supabase.storage.from("pecas").getPublicUrl(nomeArquivo);
-          fotoUrl = pub.publicUrl;
+        if (upErr) {
+          throw new Error(`Não foi possível enviar a foto (${upErr.message}). Verifique se o bucket "pecas" existe e está público.`);
         }
+        const { data: pub } = supabase.storage.from("pecas").getPublicUrl(nomeArquivo);
+        fotoUrl = pub.publicUrl;
       }
 
       const payload = {
@@ -468,11 +469,25 @@ function CalculadoraPage() {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return;
+
+    // se a foto ainda não foi enviada (usuário não salvou o orçamento antes), envia agora
+    let fotoUrl = fotoPreview && fotoPreview.startsWith("http") ? fotoPreview : null;
+    if (foto) {
+      const nomeArquivo = `${user.id}/produtos/${Date.now()}-${foto.name}`;
+      const { error: upErr } = await supabase.storage.from("pecas").upload(nomeArquivo, foto);
+      if (upErr) {
+        setErro(`Não foi possível enviar a foto (${upErr.message}). Verifique se o bucket "pecas" existe e está público.`);
+        return;
+      }
+      const { data: pub } = supabase.storage.from("pecas").getPublicUrl(nomeArquivo);
+      fotoUrl = pub.publicUrl;
+    }
+
     const qtdeAtual = Number(qtde) || 1;
     const { error } = await supabase.from("produtos").insert({
       usuario_id: user.id,
       nome: nomePeca || "Produto sem nome",
-      foto_url: fotoPreview && fotoPreview.startsWith("http") ? fotoPreview : null,
+      foto_url: fotoUrl,
       peso_g: Number(pesoG) || null,
       tempo_impressao_min: (Number(horasImpressao) || 0) * 60 + (Number(minutosImpressao) || 0),
       filamento_id: usarEstoqueFilamento ? filamentoId || null : null,
@@ -940,6 +955,8 @@ function CalculadoraPage() {
               Custo total do lote (sem lucro): {formatBRL(resultado.custo_total)}
             </p>
           </div>
+
+          {erro && <p className="text-sm text-bad">{erro}</p>}
 
           {salvo ? (
             <div className="flex items-center justify-between gap-3 text-good text-sm bg-good/10 rounded-xl px-4 py-3">
