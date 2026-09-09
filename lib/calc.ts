@@ -10,8 +10,15 @@
  *   pela quantidade.
  * - Pós-processamento "por peça" multiplica pela quantidade;
  *   "total do lote" não multiplica (é o tempo already do lote todo).
- * - O preço sugerido é sempre um valor UNITÁRIO (custo total do lote
- *   dividido pela quantidade, depois aplicada a margem).
+ * - O "Lucro desejado (%)" é MARKUP sobre o custo de produção
+ *   (material + energia + depreciação da impressora), não margem
+ *   sobre o preço final. Ou seja: lucro = custo_producao × (pct/100).
+ *   Isso é o que permite o slider ir até 300% sem quebrar a conta —
+ *   margem sobre preço final trava perto de 100% (divisão por zero).
+ * - Mão de obra, custos extras e frete entram DEPOIS do lucro, sem
+ *   markup em cima deles (você já embutiu seu valor/hora ali).
+ * - O preço sugerido é sempre um valor UNITÁRIO (tudo dividido pela
+ *   quantidade no final).
  */
 
 export interface CalculoInput {
@@ -42,7 +49,7 @@ export interface CalculoInput {
   custos_extra: number;
   frete: number;
 
-  lucro_desejado_pct: number; // 0-100
+  lucro_desejado_pct: number; // markup sobre o custo de produção, sem limite prático (ex: 150 = 150%)
 
   incluir_taxa_marketplace: boolean;
   plataforma_taxa_percentual?: number; // 0-1 (ex: 0.20)
@@ -54,8 +61,10 @@ export interface CalculoResultado {
   custo_filamento: number;
   custo_energia: number;
   custo_impressora: number;
-  custo_mao_obra: number;
-  custo_total: number;
+  custo_producao_unit: number; // material + energia + depreciação, por unidade
+  lucro_unit: number; // markup em cima do custo de produção, por unidade
+  custo_mao_obra: number; // total do lote
+  custo_total: number; // total do lote (produção + mão de obra + extras + frete)
   preco_sugerido_unit: number;
   preco_sugerido_marketplace_unit: number | null;
 }
@@ -64,12 +73,12 @@ export function calcularOrcamento(input: CalculoInput): CalculoResultado {
   const qtde = input.qtde > 0 ? input.qtde : 1;
   const tempoImpressaoH = input.tempo_impressao_min / 60;
 
-  // --- filamento ---
+  // --- filamento (total do lote) ---
   const fatorFalha = 1 + input.taxa_falha_pct / 100;
   const consumo_filamento_g = input.peso_g * qtde * fatorFalha;
   const custo_filamento = consumo_filamento_g * input.filamento_custo_por_g;
 
-  // --- energia ---
+  // --- energia (total do lote) ---
   let custo_energia = 0;
   if (input.energia_modo === "medido") {
     const wh = input.energia_wh_total ?? 0;
@@ -79,32 +88,37 @@ export function calcularOrcamento(input: CalculoInput): CalculoResultado {
     custo_energia = tempoImpressaoH * custoHoraEnergia;
   }
 
-  // --- depreciação da impressora ---
+  // --- depreciação da impressora (total do lote) ---
   const custoHoraImpressora =
     input.impressora_vida_util_horas > 0
       ? input.impressora_valor_compra / input.impressora_vida_util_horas
       : 0;
   const custo_impressora = tempoImpressaoH * custoHoraImpressora;
 
-  // --- mão de obra (pós-processamento) ---
+  // --- custo de produção: base sobre a qual o lucro é calculado ---
+  const custo_producao_total = custo_filamento + custo_energia + custo_impressora;
+  const custo_producao_unit = custo_producao_total / qtde;
+
+  // --- lucro (markup sobre o custo de produção, por unidade) ---
+  const lucro_unit = custo_producao_unit * (input.lucro_desejado_pct / 100);
+
+  // --- mão de obra (pós-processamento, total do lote) — sem markup ---
   const tempoPosH = input.tempo_pos_processamento_min / 60;
   const tempoPosTotalH =
     input.pos_processamento_modo === "peca" ? tempoPosH * qtde : tempoPosH;
   const custo_mao_obra = tempoPosTotalH * input.valor_hora_pessoal;
 
-  // --- total ---
+  // --- custo total do lote (pra relatório/registro, sem lucro) ---
   const custo_total =
-    custo_filamento +
-    custo_energia +
-    custo_impressora +
-    custo_mao_obra +
-    input.custos_extra +
-    input.frete;
+    custo_producao_total + custo_mao_obra + input.custos_extra + input.frete;
 
-  // --- preço sugerido (unitário) ---
-  const margem = Math.min(Math.max(input.lucro_desejado_pct / 100, 0), 0.9999);
-  const custoUnitario = custo_total / qtde;
-  const preco_sugerido_unit = margem < 1 ? custoUnitario / (1 - margem) : custoUnitario;
+  // --- preço sugerido (unitário): produção com lucro + mão de obra + extras + frete rateados ---
+  const preco_sugerido_unit =
+    custo_producao_unit +
+    lucro_unit +
+    custo_mao_obra / qtde +
+    input.custos_extra / qtde +
+    input.frete / qtde;
 
   // --- preço sugerido com taxa de marketplace ---
   let preco_sugerido_marketplace_unit: number | null = null;
@@ -120,6 +134,8 @@ export function calcularOrcamento(input: CalculoInput): CalculoResultado {
     custo_filamento,
     custo_energia,
     custo_impressora,
+    custo_producao_unit,
+    lucro_unit,
     custo_mao_obra,
     custo_total,
     preco_sugerido_unit,
