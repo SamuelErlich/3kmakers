@@ -1,17 +1,33 @@
-# Controle 3D — Fase 1
+# Controle 3D — Fase 1 + Fase 2
 
 Precificação, orçamentos, pedidos e vendas para produção de impressão 3D.
 Stack: **Next.js 14 (App Router)** + **Supabase** (banco Postgres + login) + Tailwind.
 
-## O que já funciona nesta fase
+## O que já funciona
 
 - Login/cadastro com papel Admin/Operador (cada um com painel pessoal)
 - Cadastro de Impressoras, Filamentos (com estoque e alerta), Insumos (estoque) e Plataformas (taxas)
 - Configurações gerais (mão de obra padrão, margem padrão, alerta de estoque) — só admin
-- **Calculadora completa**: monta o orçamento, calcula custo e preço sugerido (com ou sem taxa de marketplace) e salva
+- **Calculadora completa**: monta o orçamento, calcula custo e preço sugerido (com ou sem taxa de
+  marketplace) e salva. Lucro é markup sobre o custo de produção (não margem sobre preço final).
+- **Meus Orçamentos**: lista/histórico completo, busca por peça/cliente, filtro por status, troca de
+  status direto na lista, editar (reabre a Calculadora com tudo preenchido), duplicar, excluir
+- **Meus Produtos**: modelos reaproveitáveis (nome, foto, peso, tempo, filamento padrão) — um botão
+  "Usar na Calculadora" carrega tudo de novo sem redigitar. Também dá pra salvar um cálculo novo
+  direto como Produto.
+- **Pedidos**: Kanban com os status a partir de "Em produção" (Em produção → Pronto → Vendido →
+  Entregue → Cancelado), com botões de avançar/voltar etapa
 
-Os menus "Meus Orçamentos", "Meus Produtos", "Pedidos", "Vendas", "Investimentos", "Financeiro" e "Ranking"
-aparecem no menu como "em breve" — são as próximas fases.
+Os menus "Vendas", "Investimentos", "Financeiro" e "Ranking" aparecem como "em breve" — são a próxima fase.
+
+## Decisões que valem a pena conferir
+
+- **Editar um orçamento não desconta o estoque de filamento de novo.** O desconto só acontece na
+  criação. Se você mudar o peso/quantidade num orçamento já salvo, ajuste o estoque manualmente em
+  Filamentos se precisar.
+- **Duplicar** um orçamento sempre volta o status para "Orçamento", mesmo duplicando um Pedido.
+- Em Pedidos, o botão "Voltar" nunca retorna para o status "Orçamento" — isso só acontece
+  editando o registro em Meus Orçamentos.
 
 ## 1. Criar o projeto no Supabase
 
@@ -24,6 +40,8 @@ aparecem no menu como "em breve" — são as próximas fases.
 4. Vá em **Project Settings > API** e copie a `Project URL` e a `anon public key`.
 5. Vá em **Table Editor > profiles**: depois de você criar sua própria conta no app (passo 3 abaixo),
    ache sua linha e troque `papel` de `operador` para `admin`. Só o primeiro usuário precisa fazer isso na mão.
+6. (Opcional, mas recomendado) Em **Authentication > Providers > Email**, desligue "Confirm email" —
+   assim novas contas da equipe entram direto, sem depender do e-mail de confirmação chegar.
 
 ## 2. Rodar local (opcional, pra testar antes de subir)
 
@@ -34,8 +52,8 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-Acesse http://localhost:3000, crie sua conta em `/signup`, confirme o e-mail, promova seu usuário a admin
-no Supabase (passo 5 acima), e faça login.
+Acesse http://localhost:3000, crie sua conta em `/signup`, confirme o e-mail (ou desligue a
+confirmação, passo 6 acima), promova seu usuário a admin no Supabase (passo 5 acima), e faça login.
 
 ## 3. Deploy na Vercel
 
@@ -51,19 +69,22 @@ no Supabase (passo 5 acima), e faça login.
 app/
   login/, signup/            → autenticação
   (app)/                     → tudo que precisa estar logado (tem a sidebar)
-    calculadora/
-    impressoras/
-    filamentos/
-    insumos/
-    configuracoes/           → só admin (parâmetros + plataformas)
+    calculadora/              → aceita ?editar=<id> e ?produto=<id> na URL
+    orcamentos/               → lista/histórico
+    produtos/                 → modelos reaproveitáveis
+    pedidos/                  → kanban
+    impressoras/, filamentos/, insumos/
+    configuracoes/            → só admin (parâmetros + plataformas)
 lib/
   calc.ts                    → toda a lógica de cálculo, comentada e isolada
+  status.ts                  → ordem e metadados dos status (usado em Orçamentos/Pedidos)
   supabase/                  → clientes do Supabase (browser/servidor)
   types.ts                   → tipos espelhando as tabelas
 sql/schema.sql               → schema completo (todas as fases já incluídas)
 ```
 
-## Próximas fases
+## Próxima fase
 
-- **Fase 2**: Meus Orçamentos (lista/histórico/edição), Meus Produtos (reaproveitar peça), Pedidos (Kanban por status)
-- **Fase 3**: Vendas (por plataforma), Investimentos, Financeiro (painel com gráfico mensal), Ranking, Relatórios (mês ou período livre, exportável)
+- **Fase 3**: Vendas (por plataforma), Investimentos, Financeiro (painel com gráfico mensal), Ranking,
+  Relatórios (mês ou período livre, exportável)
+

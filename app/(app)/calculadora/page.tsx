@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
 import { Button, Field, Input, Select, Toggle, SegmentedControl, Badge } from "@/components/ui/Field";
@@ -9,8 +11,20 @@ import type { Filamento, Impressora, Plataforma } from "@/lib/types";
 
 const LOCAL_STORAGE_KEY = "controle3d_calc_defaults";
 
-export default function CalculadoraPage() {
+export default function CalculadoraPageWrapper() {
+  return (
+    <Suspense fallback={<p className="text-sm text-base-muted">Carregando...</p>}>
+      <CalculadoraPage />
+    </Suspense>
+  );
+}
+
+function CalculadoraPage() {
   const supabase = createClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const editarId = searchParams.get("editar");
+  const produtoIdParam = searchParams.get("produto");
 
   // ---- cadastros de apoio ----
   const [impressoras, setImpressoras] = useState<Impressora[]>([]);
@@ -69,6 +83,11 @@ export default function CalculadoraPage() {
   const [salvo, setSalvo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
+  // ---- edição de orçamento existente / produto carregado ----
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [nomeEditando, setNomeEditando] = useState<string>("");
+  const [carregandoRegistro, setCarregandoRegistro] = useState(false);
+
   async function carregarApoio() {
     setCarregandoApoio(true);
     const {
@@ -83,26 +102,96 @@ export default function CalculadoraPage() {
       supabase.from("filamentos").select("*").order("material"),
       supabase.from("plataformas").select("*").eq("ativa", true).order("nome"),
     ]);
-    setImpressoras((imps as Impressora[]) ?? []);
-    setFilamentos((fils as Filamento[]) ?? []);
+    const impressorasCarregadas = (imps as Impressora[]) ?? [];
+    const filamentosCarregados = (fils as Filamento[]) ?? [];
+    setImpressoras(impressorasCarregadas);
+    setFilamentos(filamentosCarregados);
     setPlataformas((plats as Plataforma[]) ?? []);
-    setCarregandoApoio(false);
 
-    // aplica os últimos valores salvos, se houver
-    const salvo = typeof window !== "undefined" ? localStorage.getItem(LOCAL_STORAGE_KEY) : null;
-    if (salvo) {
-      try {
-        const d = JSON.parse(salvo);
-        if (d.precoKwh) setPrecoKwh(d.precoKwh);
-        if (d.precoFilamentoKg) setPrecoFilamentoKg(d.precoFilamentoKg);
-        if (d.taxaFalha) setTaxaFalha(d.taxaFalha);
-        if (d.lucroDesejado) setLucroDesejado(d.lucroDesejado);
-        if (d.valorHoraPessoal) setValorHoraPessoal(d.valorHoraPessoal);
-        if (d.impressoraId) setImpressoraId(d.impressoraId);
-      } catch {
-        /* ignora */
+    if (editarId) {
+      // ---- modo edição: carrega um orçamento já salvo ----
+      setCarregandoRegistro(true);
+      const { data: o } = await supabase.from("orcamentos").select("*").eq("id", editarId).single();
+      if (o) {
+        setEditandoId(o.id);
+        setNomeEditando(o.nome_peca);
+        setNomePeca(o.nome_peca);
+        setCliente(o.cliente ?? "");
+        setFotoPreview(o.foto_url);
+        setQtde(String(o.qtde));
+        setPesoG(String(o.peso_g));
+        setUsarEstoqueFilamento(!!o.filamento_id);
+        setFilamentoId(o.filamento_id ?? "");
+        setHorasImpressao(String(Math.floor((o.tempo_impressao_min ?? 0) / 60)));
+        setMinutosImpressao(String((o.tempo_impressao_min ?? 0) % 60));
+        setLucroDesejado(String(o.lucro_desejado_pct));
+        setImpressoraId(o.impressora_id ?? "");
+        const impSelecionada = impressorasCarregadas.find((i) => i.id === o.impressora_id);
+        setPrecoKwh(String(o.energia_preco_kwh));
+        setModoEnergia(o.energia_modo);
+        setConsumoW(impSelecionada ? String(impSelecionada.consumo_w) : "200");
+        setWhTotal(String(o.energia_wh_total ?? 0));
+        setValorImpressora(impSelecionada ? String(impSelecionada.valor_compra) : "0");
+        setVidaUtilImpressora(impSelecionada ? String(impSelecionada.vida_util_horas) : "5000");
+        if (!o.filamento_id) setPrecoFilamentoKg(String(o.filamento_preco_kg_manual ?? 100));
+        setTaxaFalha(String(o.taxa_falha_pct));
+        setLinkStl(o.link_stl ?? "");
+        setObservacoes(o.observacoes ?? "");
+        setFrete(String(o.frete));
+        setIncluirTaxaMarketplace(o.incluir_taxa_marketplace);
+        setPlataformaId(o.plataforma_id ?? "");
+        setValorHoraPessoal(String(o.valor_hora_pessoal));
+        setModoPos(o.pos_processamento_modo);
+        setHorasPos(String(Math.floor((o.tempo_pos_processamento_min ?? 0) / 60)));
+        setMinutosPos(String((o.tempo_pos_processamento_min ?? 0) % 60));
+        setCustosExtras(String(o.custos_extra));
+        setCalculado(true);
+      }
+      setCarregandoRegistro(false);
+    } else if (produtoIdParam) {
+      // ---- carregar modelo salvo em Meus Produtos ----
+      setCarregandoRegistro(true);
+      const { data: p } = await supabase.from("produtos").select("*").eq("id", produtoIdParam).single();
+      if (p) {
+        setNomePeca(p.nome);
+        setFotoPreview(p.foto_url);
+        if (p.peso_g) setPesoG(String(p.peso_g));
+        if (p.tempo_impressao_min) {
+          setHorasImpressao(String(Math.floor(p.tempo_impressao_min / 60)));
+          setMinutosImpressao(String(p.tempo_impressao_min % 60));
+        }
+        if (p.filamento_id) {
+          setUsarEstoqueFilamento(true);
+          setFilamentoId(p.filamento_id);
+          const fil = filamentosCarregados.find((f) => f.id === p.filamento_id);
+          if (fil) {
+            const custoTotal = fil.preco_bobina + fil.frete;
+            const custoKg = fil.peso_bobina_g > 0 ? (custoTotal / fil.peso_bobina_g) * 1000 : 0;
+            setPrecoFilamentoKg(custoKg.toFixed(2));
+          }
+        }
+        if (p.observacoes) setObservacoes(p.observacoes);
+      }
+      setCarregandoRegistro(false);
+    } else {
+      // aplica os últimos valores salvos, se houver (só quando não está editando/carregando produto)
+      const salvo = typeof window !== "undefined" ? localStorage.getItem(LOCAL_STORAGE_KEY) : null;
+      if (salvo) {
+        try {
+          const d = JSON.parse(salvo);
+          if (d.precoKwh) setPrecoKwh(d.precoKwh);
+          if (d.precoFilamentoKg) setPrecoFilamentoKg(d.precoFilamentoKg);
+          if (d.taxaFalha) setTaxaFalha(d.taxaFalha);
+          if (d.lucroDesejado) setLucroDesejado(d.lucroDesejado);
+          if (d.valorHoraPessoal) setValorHoraPessoal(d.valorHoraPessoal);
+          if (d.impressoraId) setImpressoraId(d.impressoraId);
+        } catch {
+          /* ignora */
+        }
       }
     }
+
+    setCarregandoApoio(false);
   }
 
   useEffect(() => {
@@ -220,6 +309,8 @@ export default function CalculadoraPage() {
   }
 
   function novoCalculo() {
+    setEditandoId(null);
+    setNomeEditando("");
     setNomePeca("");
     setCliente("");
     setFoto(null);
@@ -241,6 +332,7 @@ export default function CalculadoraPage() {
     setCalculado(false);
     setSalvo(false);
     setErro(null);
+    if (editarId || produtoIdParam) router.push("/calculadora");
   }
 
   async function salvarOrcamento() {
@@ -252,7 +344,7 @@ export default function CalculadoraPage() {
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Sessão expirada, faça login novamente.");
 
-      let fotoUrl: string | null = null;
+      let fotoUrl: string | null = editandoId ? fotoPreview : null;
       if (foto) {
         const nomeArquivo = `${user.id}/${Date.now()}-${foto.name}`;
         const { error: upErr } = await supabase.storage.from("pecas").upload(nomeArquivo, foto);
@@ -262,8 +354,7 @@ export default function CalculadoraPage() {
         }
       }
 
-      const { error: insertErr } = await supabase.from("orcamentos").insert({
-        usuario_id: user.id,
+      const payload = {
         nome_peca: nomePeca,
         cliente: cliente || null,
         foto_url: fotoUrl,
@@ -287,7 +378,6 @@ export default function CalculadoraPage() {
         lucro_desejado_pct: Number(lucroDesejado) || 0,
         incluir_taxa_marketplace: incluirTaxaMarketplace,
         plataforma_id: incluirTaxaMarketplace ? plataformaId || null : null,
-        status: "orcamento",
         consumo_filamento_g: resultado.consumo_filamento_g,
         custo_filamento: resultado.custo_filamento,
         custo_energia: resultado.custo_energia,
@@ -297,11 +387,29 @@ export default function CalculadoraPage() {
         preco_sugerido_unit: resultado.preco_sugerido_unit,
         preco_sugerido_marketplace_unit: resultado.preco_sugerido_marketplace_unit,
         preco_final_unit: resultado.preco_sugerido_marketplace_unit ?? resultado.preco_sugerido_unit,
+      };
+
+      if (editandoId) {
+        const { error: updateErr } = await supabase
+          .from("orcamentos")
+          .update({ ...payload, atualizado_em: new Date().toISOString() })
+          .eq("id", editandoId);
+        if (updateErr) throw updateErr;
+        // edição não desconta estoque de novo — o desconto já aconteceu na criação original
+        setSalvo(true);
+        router.push("/orcamentos");
+        return;
+      }
+
+      const { error: insertErr } = await supabase.from("orcamentos").insert({
+        ...payload,
+        usuario_id: user.id,
+        status: "orcamento",
       });
 
       if (insertErr) throw insertErr;
 
-      // desconta o estoque de filamento usado, se aplicável
+      // desconta o estoque de filamento usado, se aplicável (só em orçamento novo)
       if (usarEstoqueFilamento && filamentoId) {
         const fil = filamentos.find((f) => f.id === filamentoId);
         if (fil) {
@@ -320,6 +428,28 @@ export default function CalculadoraPage() {
     }
   }
 
+  async function salvarComoProduto() {
+    setErro(null);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase.from("produtos").insert({
+      usuario_id: user.id,
+      nome: nomePeca || "Produto sem nome",
+      foto_url: fotoPreview && fotoPreview.startsWith("http") ? fotoPreview : null,
+      peso_g: Number(pesoG) || null,
+      tempo_impressao_min: (Number(horasImpressao) || 0) * 60 + (Number(minutosImpressao) || 0),
+      filamento_id: usarEstoqueFilamento ? filamentoId || null : null,
+      observacoes: observacoes || null,
+    });
+    if (error) {
+      setErro("Não foi possível salvar como produto.");
+      return;
+    }
+    alert("Produto salvo! Você já pode reutilizá-lo em Meus Produtos.");
+  }
+
   if (carregandoApoio) {
     return <p className="text-sm text-base-muted">Carregando...</p>;
   }
@@ -330,6 +460,27 @@ export default function CalculadoraPage() {
         <h1 className="text-xl font-semibold">Calculadora</h1>
         <p className="text-sm text-base-muted mt-1">Monte o orçamento da peça e salve para gerar pedido depois.</p>
       </div>
+
+      {carregandoRegistro && (
+        <div className="text-sm text-base-muted bg-base-surface2 rounded-xl px-4 py-3">Carregando dados...</div>
+      )}
+
+      {editandoId && !carregandoRegistro && (
+        <div className="flex items-center justify-between gap-3 text-sm bg-accent/10 border border-accent/30 rounded-xl px-4 py-3">
+          <span>
+            ✏️ Editando orçamento: <strong>{nomeEditando}</strong>
+          </span>
+          <button onClick={novoCalculo} className="text-accent-hover font-medium shrink-0">
+            Cancelar edição
+          </button>
+        </div>
+      )}
+
+      {produtoIdParam && !editandoId && !carregandoRegistro && (
+        <div className="text-sm bg-good/10 border border-good/30 rounded-xl px-4 py-3">
+          🧩 Dados carregados de Meus Produtos — ajuste o que precisar e calcule.
+        </div>
+      )}
 
       {/* Dados da Peça */}
       <Card title="Dados da Peça" icon="🧊">
@@ -669,14 +820,22 @@ export default function CalculadoraPage() {
           </div>
 
           {salvo ? (
-            <div className="flex items-center gap-2 text-good text-sm bg-good/10 rounded-xl px-4 py-3">
-              ✅ Orçamento salvo! Use "Meus Orçamentos" para acompanhar (em breve).
+            <div className="flex items-center justify-between gap-3 text-good text-sm bg-good/10 rounded-xl px-4 py-3">
+              <span>✅ Orçamento salvo!</span>
+              <Link href="/orcamentos" className="font-medium underline shrink-0">
+                Ver em Meus Orçamentos
+              </Link>
             </div>
           ) : (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button type="button" onClick={salvarOrcamento} disabled={salvando}>
-                {salvando ? "Salvando..." : "💾 Salvar orçamento"}
+                {salvando ? "Salvando..." : editandoId ? "💾 Salvar alterações" : "💾 Salvar orçamento"}
               </Button>
+              {!editandoId && (
+                <Button type="button" variant="secondary" onClick={salvarComoProduto}>
+                  🧩 Salvar como Produto
+                </Button>
+              )}
               <Button type="button" variant="secondary" onClick={novoCalculo}>
                 Novo cálculo
               </Button>

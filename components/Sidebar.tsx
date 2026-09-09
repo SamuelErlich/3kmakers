@@ -8,15 +8,15 @@ import type { Papel } from "@/lib/types";
 
 const MENU_ATIVO = [
   { href: "/calculadora", label: "Calculadora", icon: "🧮" },
+  { href: "/orcamentos", label: "Meus Orçamentos", icon: "📄" },
+  { href: "/produtos", label: "Meus Produtos", icon: "🧩" },
+  { href: "/pedidos", label: "Pedidos", icon: "🗂️" },
   { href: "/impressoras", label: "Impressoras", icon: "🖨️" },
   { href: "/filamentos", label: "Filamentos", icon: "🧵" },
   { href: "/insumos", label: "Insumos", icon: "📦" },
 ];
 
 const MENU_EM_BREVE = [
-  { label: "Meus Orçamentos", icon: "📄" },
-  { label: "Meus Produtos", icon: "🧩" },
-  { label: "Pedidos", icon: "🗂️" },
   { label: "Vendas", icon: "💲" },
   { label: "Investimentos", icon: "📈" },
   { label: "Financeiro", icon: "📊" },
