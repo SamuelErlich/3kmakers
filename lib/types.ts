@@ -17,6 +17,7 @@ export interface Config {
 
 export interface Impressora {
   id: string;
+  usuario_id: string;
   nome: string;
   valor_compra: number;
   vida_util_horas: number;
@@ -26,6 +27,7 @@ export interface Impressora {
 
 export interface Filamento {
   id: string;
+  usuario_id: string;
   material: string;
   cor_marca: string | null;
   peso_bobina_g: number;
@@ -37,6 +39,7 @@ export interface Filamento {
 
 export interface Insumo {
   id: string;
+  usuario_id: string;
   nome: string;
   unidade: string;
   preco_unitario: number;
