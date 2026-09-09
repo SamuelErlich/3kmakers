@@ -600,15 +600,25 @@ function CalculadoraPage() {
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center justify-between mb-1.5 gap-3">
             <label className="text-sm font-medium">Lucro desejado (%)</label>
-            <span className="text-accent-hover font-semibold">{lucroDesejado}%</span>
+            <div className="flex items-center gap-1 shrink-0">
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                value={lucroDesejado}
+                onChange={(e) => setLucroDesejado(e.target.value)}
+                className="!w-20 !py-1 !px-2 text-right text-accent-hover font-semibold"
+              />
+              <span className="text-accent-hover font-semibold">%</span>
+            </div>
           </div>
           <input
             type="range"
             min={0}
             max={300}
-            value={lucroDesejado}
+            value={Math.min(Number(lucroDesejado) || 0, 300)}
             onChange={(e) => setLucroDesejado(e.target.value)}
             className="w-full accent-[#5b6ef5]"
           />
