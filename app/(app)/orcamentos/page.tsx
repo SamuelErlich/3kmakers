@@ -17,6 +17,8 @@ export default function OrcamentosPage() {
 
   const [filtroStatus, setFiltroStatus] = useState<string>("todos");
   const [busca, setBusca] = useState("");
+  const [salvandoProdutoId, setSalvandoProdutoId] = useState<string | null>(null);
+  const [produtoSalvoId, setProdutoSalvoId] = useState<string | null>(null);
 
   async function carregar() {
     setCarregando(true);
@@ -68,6 +70,39 @@ export default function OrcamentosPage() {
       status: "orcamento",
     });
     carregar();
+  }
+
+  async function salvarComoProduto(o: Orcamento) {
+    setSalvandoProdutoId(o.id);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setSalvandoProdutoId(null);
+      return;
+    }
+    const qtde = o.qtde > 0 ? o.qtde : 1;
+    const { error } = await supabase.from("produtos").insert({
+      usuario_id: user.id,
+      nome: o.nome_peca,
+      foto_url: o.foto_url,
+      peso_g: o.peso_g,
+      tempo_impressao_min: o.tempo_impressao_min,
+      filamento_id: o.filamento_id,
+      observacoes: o.observacoes,
+      // preço e custo já calculados vão junto — é isso que habilita o botão
+      // "Vender" direto em Meus Produtos, sem precisar recalcular
+      custo_unitario: (o.custo_total ?? 0) / qtde,
+      preco_final_unit: o.preco_final_unit,
+      lucro_desejado_pct: o.lucro_desejado_pct,
+    });
+    setSalvandoProdutoId(null);
+    if (error) {
+      alert("Não foi possível salvar como produto.");
+      return;
+    }
+    setProdutoSalvoId(o.id);
+    setTimeout(() => setProdutoSalvoId((atual) => (atual === o.id ? null : atual)), 3000);
   }
 
   const listaFiltrada = useMemo(() => {
@@ -155,6 +190,18 @@ export default function OrcamentosPage() {
                   </Link>
                   <Button variant="secondary" className="!px-3 !py-1.5 text-xs" onClick={() => duplicar(o)}>
                     Duplicar
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="!px-3 !py-1.5 text-xs"
+                    disabled={salvandoProdutoId === o.id}
+                    onClick={() => salvarComoProduto(o)}
+                  >
+                    {produtoSalvoId === o.id
+                      ? "✅ Salvo"
+                      : salvandoProdutoId === o.id
+                      ? "Salvando..."
+                      : "🧩 Salvar como Produto"}
                   </Button>
                   <Button variant="danger" className="!px-3 !py-1.5 text-xs" onClick={() => excluir(o.id)}>
                     Excluir
