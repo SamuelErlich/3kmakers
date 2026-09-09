@@ -240,7 +240,10 @@ function CalculadoraPage() {
     return (Number(precoFilamentoKg) || 0) / 1000;
   }, [usarEstoqueFilamento, filamentoId, filamentos, precoFilamentoKg]);
 
-  const plataformaSelecionada = plataformas.find((p) => p.id === plataformaId);
+  const plataformaSelecionada = useMemo(
+    () => plataformas.find((p) => p.id === plataformaId),
+    [plataformas, plataformaId]
+  );
 
   const resultado = useMemo(() => {
     return calcularOrcamento({
@@ -317,6 +320,24 @@ function CalculadoraPage() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [salvarConfiguracoes, precoKwh, precoFilamentoKg, taxaFalha, lucroDesejado, valorHoraPessoal, impressoraId]);
+
+  function alternarMarketplace(ativar: boolean) {
+    setIncluirTaxaMarketplace(ativar);
+    // ao ativar, já escolhe uma plataforma sozinho (senão a taxa fica em 0% e o preço
+    // parece "não ter mudado" até o usuário abrir o segundo campo e escolher uma)
+    if (ativar && !plataformaId && plataformas.length > 0) {
+      setPlataformaId(plataformas[0].id);
+    }
+  }
+
+  function alternarUsarEstoque() {
+    const novoValor = !usarEstoqueFilamento;
+    setUsarEstoqueFilamento(novoValor);
+    // mesmo raciocínio: ativar sem escolher o filamento deixa o preço parecendo travado
+    if (novoValor && !filamentoId && filamentos.length > 0) {
+      selecionarFilamento(filamentos[0].id);
+    }
+  }
 
   function novoCalculo() {
     setEditandoId(null);
@@ -538,7 +559,7 @@ function CalculadoraPage() {
           </Field>
         </div>
 
-        <Button type="button" variant="secondary" onClick={() => setUsarEstoqueFilamento(!usarEstoqueFilamento)} className="w-full">
+        <Button type="button" variant="secondary" onClick={alternarUsarEstoque} className="w-full">
           📦 {usarEstoqueFilamento ? "Usando filamento do estoque" : "Usar filamentos do estoque"}
         </Button>
 
@@ -598,19 +619,29 @@ function CalculadoraPage() {
               Já calcula o preço com a taxa da plataforma embutida, pronto pra postar no anúncio.
             </p>
           </div>
-          <Toggle checked={incluirTaxaMarketplace} onChange={setIncluirTaxaMarketplace} />
+          <Toggle checked={incluirTaxaMarketplace} onChange={alternarMarketplace} />
         </div>
         {incluirTaxaMarketplace && (
-          <Field label="Plataforma">
-            <Select value={plataformaId} onChange={(e) => setPlataformaId(e.target.value)}>
-              <option value="">Escolha a plataforma</option>
-              {plataformas.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nome} ({(p.taxa_percentual * 100).toFixed(0)}% + {formatBRL(p.taxa_fixa)})
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <>
+            <Field label="Plataforma">
+              <Select value={plataformaId} onChange={(e) => setPlataformaId(e.target.value)}>
+                <option value="">Escolha a plataforma</option>
+                {plataformas.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nome} ({(p.taxa_percentual * 100).toFixed(0)}% + {formatBRL(p.taxa_fixa)})
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {pronto && plataformaId && (
+              <div className="flex items-center justify-between rounded-xl bg-accent/10 px-4 py-2.5">
+                <span className="text-sm text-base-muted">Preço com taxa (atualiza ao vivo)</span>
+                <span className="text-lg font-semibold text-accent-hover">
+                  {formatBRL(resultado.preco_sugerido_marketplace_unit)}
+                </span>
+              </div>
+            )}
+          </>
         )}
       </Card>
 
