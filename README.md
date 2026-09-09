@@ -5,9 +5,14 @@ Stack: **Next.js 14 (App Router)** + **Supabase** (banco Postgres + login) + Tai
 
 ## O que o sistema faz
 
-- Login/cadastro com papel Admin/Operador (cada um com painel pessoal; admin vê tudo com o toggle
-  "Ver de todos" nas telas que têm dado por usuário)
-- Cadastro de Impressoras, Filamentos (com estoque e alerta), Insumos (estoque) e Plataformas (taxas)
+- Login/cadastro com papel Admin/Operador — **cada conta é 100% independente**: orçamentos, produtos,
+  pedidos, vendas, financeiro, relatórios, impressoras, filamentos e insumos são só da própria conta,
+  ninguém vê o de ninguém. O único papel do admin no sistema é cuidar de **Configurações** (parâmetros
+  gerais e as taxas das plataformas de venda) — isso sim é compartilhado, porque é a mesma taxa pra
+  empresa inteira.
+- Cadastro de Impressoras, Filamentos (com estoque e alerta) e Insumos (estoque) — pessoal, cada conta
+  monta o seu
+- Plataformas de venda (taxas) — compartilhadas entre todos, só admin edita
 - Configurações gerais (mão de obra padrão, margem padrão, alerta de estoque) — só admin
 - **Calculadora**: monta o orçamento, calcula custo e preço sugerido (com ou sem taxa de marketplace)
   e salva. Lucro é markup sobre o custo de produção (material + energia + depreciação), não margem
@@ -48,9 +53,8 @@ Configurações) — nenhuma taxa fica "hardcoded" em um lugar só.
   duplique o orçamento original em Meus Orçamentos primeiro.
 - **Excluir uma Venda não reverte o status do Pedido** de volta sozinho — ajuste manualmente em
   Meus Orçamentos se precisar.
-- O card de **Investimentos** no Financeiro soma o valor de compra de todas as impressoras
-  cadastradas (recurso compartilhado da oficina) + os investimentos avulsos do escopo selecionado
-  (seus ou de todos, conforme o toggle).
+- O card de **Investimentos** no Financeiro soma o valor de compra das suas impressoras + seus
+  investimentos avulsos — sempre só da própria conta.
 - A exportação de Relatórios é em **CSV** (abre direto no Excel/Google Sheets). Se preferir um PDF
   formatado, é um ajuste rápido de adicionar depois.
 
