@@ -4,15 +4,15 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
 import { Button, Field, Input } from "@/components/ui/Field";
-import type { Impressora, Papel } from "@/lib/types";
+import type { Impressora } from "@/lib/types";
 import { formatBRL } from "@/lib/calc";
 
 export default function ImpressorasPage() {
   const supabase = createClient();
-  const [papel, setPapel] = useState<Papel>("operador");
   const [lista, setLista] = useState<Impressora[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [editando, setEditando] = useState<Impressora | null>(null);
+  const [mostrarForm, setMostrarForm] = useState(false);
   const [form, setForm] = useState({ nome: "", valor_compra: "", vida_util_horas: "5000", consumo_w: "200" });
   const [salvando, setSalvando] = useState(false);
 
@@ -21,11 +21,15 @@ export default function ImpressorasPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("papel").eq("id", user.id).single();
-      setPapel((profile?.papel as Papel) ?? "operador");
+    if (!user) {
+      setCarregando(false);
+      return;
     }
-    const { data } = await supabase.from("impressoras").select("*").order("criado_em", { ascending: false });
+    const { data } = await supabase
+      .from("impressoras")
+      .select("*")
+      .eq("usuario_id", user.id)
+      .order("criado_em", { ascending: false });
     setLista((data as Impressora[]) ?? []);
     setCarregando(false);
   }
@@ -38,6 +42,7 @@ export default function ImpressorasPage() {
   function abrirNova() {
     setEditando(null);
     setForm({ nome: "", valor_compra: "", vida_util_horas: "5000", consumo_w: "200" });
+    setMostrarForm(true);
   }
 
   function abrirEdicao(imp: Impressora) {
@@ -48,11 +53,19 @@ export default function ImpressorasPage() {
       vida_util_horas: String(imp.vida_util_horas),
       consumo_w: String(imp.consumo_w),
     });
+    setMostrarForm(true);
   }
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
     setSalvando(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setSalvando(false);
+      return;
+    }
     const payload = {
       nome: form.nome,
       valor_compra: Number(form.valor_compra) || 0,
@@ -62,10 +75,10 @@ export default function ImpressorasPage() {
     if (editando) {
       await supabase.from("impressoras").update(payload).eq("id", editando.id);
     } else {
-      await supabase.from("impressoras").insert(payload);
+      await supabase.from("impressoras").insert({ ...payload, usuario_id: user.id });
     }
     setSalvando(false);
-    abrirNova();
+    setMostrarForm(false);
     carregar();
   }
 
@@ -75,18 +88,19 @@ export default function ImpressorasPage() {
     carregar();
   }
 
-  const podeEditar = papel === "admin";
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Impressoras</h1>
-        <p className="text-sm text-base-muted mt-1">
-          O custo de máquina por hora é calculado automaticamente (valor ÷ vida útil).
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-xl font-semibold">Impressoras</h1>
+          <p className="text-sm text-base-muted mt-1">
+            O custo de máquina por hora é calculado automaticamente (valor ÷ vida útil).
+          </p>
+        </div>
+        {!mostrarForm && <Button onClick={abrirNova}>+ Nova impressora</Button>}
       </div>
 
-      {podeEditar && (
+      {mostrarForm && (
         <Card title={editando ? "Editar impressora" : "Nova impressora"} icon="🖨️">
           <form onSubmit={salvar} className="grid sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
@@ -128,11 +142,9 @@ export default function ImpressorasPage() {
               <Button type="submit" disabled={salvando}>
                 {salvando ? "Salvando..." : editando ? "Salvar alterações" : "Adicionar impressora"}
               </Button>
-              {editando && (
-                <Button type="button" variant="secondary" onClick={abrirNova}>
-                  Cancelar
-                </Button>
-              )}
+              <Button type="button" variant="secondary" onClick={() => setMostrarForm(false)}>
+                Cancelar
+              </Button>
             </div>
           </form>
         </Card>
@@ -159,16 +171,14 @@ export default function ImpressorasPage() {
                       {imp.consumo_w}W · custo/h: {formatBRL(custoHora)}
                     </p>
                   </div>
-                  {podeEditar && (
-                    <div className="flex gap-2 shrink-0">
-                      <Button variant="secondary" onClick={() => abrirEdicao(imp)}>
-                        Editar
-                      </Button>
-                      <Button variant="danger" onClick={() => excluir(imp.id)}>
-                        Excluir
-                      </Button>
-                    </div>
-                  )}
+                  <div className="flex gap-2 shrink-0">
+                    <Button variant="secondary" onClick={() => abrirEdicao(imp)}>
+                      Editar
+                    </Button>
+                    <Button variant="danger" onClick={() => excluir(imp.id)}>
+                      Excluir
+                    </Button>
+                  </div>
                 </div>
               );
             })}

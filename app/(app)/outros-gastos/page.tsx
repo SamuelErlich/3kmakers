@@ -21,10 +21,7 @@ interface Gasto {
 
 export default function OutrosGastosPage() {
   const supabase = createClient();
-  const [papel, setPapel] = useState<"admin" | "operador">("operador");
-  const [verTodos, setVerTodos] = useState(false);
   const [lista, setLista] = useState<Gasto[]>([]);
-  const [nomesUsuarios, setNomesUsuarios] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
   const [form, setForm] = useState({
     data: new Date().toISOString().slice(0, 10),
@@ -40,32 +37,23 @@ export default function OutrosGastosPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    let souAdmin = false;
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("papel").eq("id", user.id).single();
-      souAdmin = profile?.papel === "admin";
-      setPapel(souAdmin ? "admin" : "operador");
+    if (!user) {
+      setCarregando(false);
+      return;
     }
-
-    let query = supabase.from("outros_gastos").select("*").order("data", { ascending: false });
-    if (!(souAdmin && verTodos) && user) query = query.eq("usuario_id", user.id);
-    const { data } = await query;
+    const { data } = await supabase
+      .from("outros_gastos")
+      .select("*")
+      .eq("usuario_id", user.id)
+      .order("data", { ascending: false });
     setLista((data as Gasto[]) ?? []);
-
-    if (souAdmin && data && data.length > 0) {
-      const ids = Array.from(new Set(data.map((g: any) => g.usuario_id)));
-      const { data: perfis } = await supabase.from("profiles").select("id, nome").in("id", ids);
-      const mapa: Record<string, string> = {};
-      (perfis ?? []).forEach((p: any) => (mapa[p.id] = p.nome));
-      setNomesUsuarios(mapa);
-    }
     setCarregando(false);
   }
 
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [verTodos]);
+  }, []);
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
@@ -105,14 +93,9 @@ export default function OutrosGastosPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold">Outros Gastos</h1>
-          <p className="text-sm text-base-muted mt-1">Despesas soltas que não entram no cálculo de uma peça específica.</p>
-        </div>
-        {papel === "admin" && (
-          <Toggle checked={verTodos} onChange={setVerTodos} label="Ver de todos" />
-        )}
+      <div>
+        <h1 className="text-xl font-semibold">Outros Gastos</h1>
+        <p className="text-sm text-base-muted mt-1">Despesas soltas que não entram no cálculo de uma peça específica.</p>
       </div>
 
       <Card title="Novo gasto" icon="💸">
@@ -161,7 +144,6 @@ export default function OutrosGastosPage() {
                   <p className="font-medium truncate">{g.descricao || g.categoria}</p>
                   <p className="text-xs text-base-muted mt-0.5">
                     {new Date(g.data + "T00:00:00").toLocaleDateString("pt-BR")} · {g.categoria}
-                    {papel === "admin" && verTodos && nomesUsuarios[g.usuario_id] && ` · ${nomesUsuarios[g.usuario_id]}`}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">

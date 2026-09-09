@@ -4,15 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { createClient } from "@/lib/supabase/client";
 import { Card, PlainCard } from "@/components/ui/Card";
-import { Select, Toggle } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Field";
 import { formatBRL } from "@/lib/calc";
 
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 export default function FinanceiroPage() {
   const supabase = createClient();
-  const [papel, setPapel] = useState<"admin" | "operador">("operador");
-  const [verTodos, setVerTodos] = useState(false);
   const [ano, setAno] = useState(new Date().getFullYear());
   const [carregando, setCarregando] = useState(true);
 
@@ -26,37 +24,34 @@ export default function FinanceiroPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    let souAdmin = false;
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("papel").eq("id", user.id).single();
-      souAdmin = profile?.papel === "admin";
-      setPapel(souAdmin ? "admin" : "operador");
+    if (!user) {
+      setCarregando(false);
+      return;
     }
 
     const inicioAno = `${ano}-01-01`;
     const fimAno = `${ano}-12-31`;
 
-    let qVendas = supabase
+    const { data: vendasData } = await supabase
       .from("vendas")
       .select("data_venda, receita, custo_total, lucro")
+      .eq("usuario_id", user.id)
       .gte("data_venda", inicioAno)
       .lte("data_venda", fimAno);
-    if (!(souAdmin && verTodos) && user) qVendas = qVendas.eq("usuario_id", user.id);
-    const { data: vendasData } = await qVendas;
     setVendas((vendasData as any) ?? []);
 
-    let qGastos = supabase.from("outros_gastos").select("data, valor").gte("data", inicioAno).lte("data", fimAno);
-    if (!(souAdmin && verTodos) && user) qGastos = qGastos.eq("usuario_id", user.id);
-    const { data: gastosData } = await qGastos;
+    const { data: gastosData } = await supabase
+      .from("outros_gastos")
+      .select("data, valor")
+      .eq("usuario_id", user.id)
+      .gte("data", inicioAno)
+      .lte("data", fimAno);
     setGastos((gastosData as any) ?? []);
 
-    // investimento total é sempre "de todos" — impressoras são um recurso compartilhado da oficina
-    const { data: imps } = await supabase.from("impressoras").select("valor_compra");
+    const { data: imps } = await supabase.from("impressoras").select("valor_compra").eq("usuario_id", user.id);
     setInvestimentoImpressoras((imps ?? []).reduce((acc: number, i: any) => acc + (i.valor_compra ?? 0), 0));
 
-    let qInv = supabase.from("investimentos").select("valor");
-    if (!(souAdmin && verTodos) && user) qInv = qInv.eq("usuario_id", user.id);
-    const { data: invsData } = await qInv;
+    const { data: invsData } = await supabase.from("investimentos").select("valor").eq("usuario_id", user.id);
     setInvestimentoOutros((invsData ?? []).reduce((acc: number, i: any) => acc + (i.valor ?? 0), 0));
 
     setCarregando(false);
@@ -65,7 +60,7 @@ export default function FinanceiroPage() {
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ano, verTodos]);
+  }, [ano]);
 
   const totais = useMemo(() => {
     const receita = vendas.reduce((acc, v) => acc + (v.receita ?? 0), 0);
@@ -108,16 +103,13 @@ export default function FinanceiroPage() {
           <h1 className="text-xl font-semibold">Financeiro</h1>
           <p className="text-sm text-base-muted mt-1">Resumo automático de vendas, custos e lucro.</p>
         </div>
-        <div className="flex items-center gap-3">
-          {papel === "admin" && <Toggle checked={verTodos} onChange={setVerTodos} label="Ver de todos" />}
-          <Select value={ano} onChange={(e) => setAno(Number(e.target.value))} className="!w-auto">
-            {anos.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
-        </div>
+        <Select value={ano} onChange={(e) => setAno(Number(e.target.value))} className="!w-auto">
+          {anos.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </Select>
       </div>
 
       {carregando ? (

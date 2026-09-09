@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
-import { Button, Field, Input, Select, Toggle } from "@/components/ui/Field";
+import { Button, Field, Input, Select } from "@/components/ui/Field";
 import { calcularVenda, formatBRL } from "@/lib/calc";
-import type { Orcamento, Papel, Plataforma } from "@/lib/types";
+import type { Orcamento, Plataforma } from "@/lib/types";
 
 interface Venda {
   id: string;
@@ -32,14 +32,11 @@ const STATUS_PAGAMENTO_INFO: Record<string, { label: string; cor: string }> = {
 
 export default function VendasPage() {
   const supabase = createClient();
-  const [papel, setPapel] = useState<Papel>("operador");
-  const [verTodos, setVerTodos] = useState(false);
 
   const [pedidosDisponiveis, setPedidosDisponiveis] = useState<Orcamento[]>([]);
   const [plataformas, setPlataformas] = useState<Plataforma[]>([]);
   const [vendas, setVendas] = useState<Venda[]>([]);
   const [nomesPeca, setNomesPeca] = useState<Record<string, string>>({});
-  const [nomesUsuarios, setNomesUsuarios] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
 
   const [orcamentoId, setOrcamentoId] = useState("");
@@ -57,11 +54,9 @@ export default function VendasPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    let souAdmin = false;
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("papel").eq("id", user.id).single();
-      souAdmin = profile?.papel === "admin";
-      setPapel(souAdmin ? "admin" : "operador");
+    if (!user) {
+      setCarregando(false);
+      return;
     }
 
     const { data: plats } = await supabase.from("plataformas").select("*").eq("ativa", true).order("nome");
@@ -71,6 +66,7 @@ export default function VendasPage() {
     const { data: todosOrcamentos } = await supabase
       .from("orcamentos")
       .select("*")
+      .eq("usuario_id", user.id)
       .neq("status", "cancelado")
       .neq("status", "orcamento")
       .order("criado_em", { ascending: false });
@@ -79,10 +75,11 @@ export default function VendasPage() {
     const idsComVenda = new Set((vendasExistentes ?? []).map((v: any) => v.orcamento_id));
     setPedidosDisponiveis(((todosOrcamentos as Orcamento[]) ?? []).filter((o) => !idsComVenda.has(o.id)));
 
-    // lista de vendas já registradas
-    let queryVendas = supabase.from("vendas").select("*").order("data_venda", { ascending: false });
-    if (!(souAdmin && verTodos) && user) queryVendas = queryVendas.eq("usuario_id", user.id);
-    const { data: vendasData } = await queryVendas;
+    const { data: vendasData } = await supabase
+      .from("vendas")
+      .select("*")
+      .eq("usuario_id", user.id)
+      .order("data_venda", { ascending: false });
     setVendas((vendasData as Venda[]) ?? []);
 
     if (vendasData && vendasData.length > 0) {
@@ -91,14 +88,6 @@ export default function VendasPage() {
       const mapaNomes: Record<string, string> = {};
       (orcs ?? []).forEach((o: any) => (mapaNomes[o.id] = o.nome_peca));
       setNomesPeca(mapaNomes);
-
-      if (souAdmin) {
-        const userIds = Array.from(new Set(vendasData.map((v: any) => v.usuario_id)));
-        const { data: perfis } = await supabase.from("profiles").select("id, nome").in("id", userIds);
-        const mapaU: Record<string, string> = {};
-        (perfis ?? []).forEach((p: any) => (mapaU[p.id] = p.nome));
-        setNomesUsuarios(mapaU);
-      }
     }
 
     setCarregando(false);
@@ -107,7 +96,7 @@ export default function VendasPage() {
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [verTodos]);
+  }, []);
 
   const orcamentoSelecionado = pedidosDisponiveis.find((o) => o.id === orcamentoId);
   const plataformaSelecionada = plataformas.find((p) => p.id === plataformaId);
@@ -122,26 +111,17 @@ export default function VendasPage() {
     }
   }
 
-  // prévia de receita/custo/lucro antes de salvar
   const previa = useMemo(() => {
     if (!orcamentoSelecionado) return null;
     const custoUnitOriginal =
       orcamentoSelecionado.qtde > 0 ? (orcamentoSelecionado.custo_total ?? 0) / orcamentoSelecionado.qtde : 0;
-    const r = calcularVenda({
+    return calcularVenda({
       qtde: Number(qtdeVendida) || 0,
       precoUnit: Number(precoRealizado) || 0,
       custoUnit: custoUnitOriginal,
       taxaPercentual: plataformaSelecionada?.taxa_percentual,
       taxaFixa: plataformaSelecionada?.taxa_fixa,
     });
-    return {
-      receitaBruta: r.receitaBruta,
-      taxaValor: r.taxaValor,
-      receita: r.receita,
-      custoTotal: r.custoTotal,
-      lucro: r.lucro,
-      margem: r.margem,
-    };
   }, [orcamentoSelecionado, qtdeVendida, precoRealizado, plataformaSelecionada]);
 
   async function registrarVenda(e: React.FormEvent) {
@@ -182,7 +162,6 @@ export default function VendasPage() {
       return;
     }
 
-    // sincroniza: pedido vendido avança pro status "vendido" (nunca retrocede se já estiver "entregue")
     if (orcamentoSelecionado.status !== "entregue") {
       await supabase.from("orcamentos").update({ status: "vendido", atualizado_em: new Date().toISOString() }).eq("id", orcamentoSelecionado.id);
     }
@@ -212,14 +191,11 @@ export default function VendasPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold">Vendas</h1>
-          <p className="text-sm text-base-muted mt-1">
-            Registre a venda de um Pedido já pronto. O status dele é atualizado sozinho pra "Vendido".
-          </p>
-        </div>
-        {papel === "admin" && <Toggle checked={verTodos} onChange={setVerTodos} label="Ver de todos" />}
+      <div>
+        <h1 className="text-xl font-semibold">Vendas</h1>
+        <p className="text-sm text-base-muted mt-1">
+          Registre a venda de um Pedido já pronto. O status dele é atualizado sozinho pra "Vendido".
+        </p>
       </div>
 
       <Card title="Registrar venda" icon="💲">
@@ -318,7 +294,6 @@ export default function VendasPage() {
                   <p className="text-xs text-base-muted mt-0.5">
                     {new Date(v.data_venda + "T00:00:00").toLocaleDateString("pt-BR")} · qtde {v.qtde_vendida} ·{" "}
                     {formatBRL(v.receita)} receita · {formatBRL(v.lucro)} lucro
-                    {papel === "admin" && verTodos && nomesUsuarios[v.usuario_id] && ` · ${nomesUsuarios[v.usuario_id]}`}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

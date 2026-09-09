@@ -3,15 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
-import { SegmentedControl, Toggle } from "@/components/ui/Field";
+import { SegmentedControl } from "@/components/ui/Field";
 import { formatBRL } from "@/lib/calc";
 
 const MEDALHAS = ["🥇", "🥈", "🥉"];
 
 export default function RankingPage() {
   const supabase = createClient();
-  const [papel, setPapel] = useState<"admin" | "operador">("operador");
-  const [verTodos, setVerTodos] = useState(false);
   const [criterio, setCriterio] = useState<"qtde" | "lucro">("lucro");
   const [carregando, setCarregando] = useState(true);
   const [linhas, setLinhas] = useState<{ nome: string; qtde: number; receita: number; lucro: number }[]>([]);
@@ -21,16 +19,15 @@ export default function RankingPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    let souAdmin = false;
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("papel").eq("id", user.id).single();
-      souAdmin = profile?.papel === "admin";
-      setPapel(souAdmin ? "admin" : "operador");
+    if (!user) {
+      setCarregando(false);
+      return;
     }
 
-    let qVendas = supabase.from("vendas").select("orcamento_id, qtde_vendida, receita, lucro");
-    if (!(souAdmin && verTodos) && user) qVendas = qVendas.eq("usuario_id", user.id);
-    const { data: vendasData } = await qVendas;
+    const { data: vendasData } = await supabase
+      .from("vendas")
+      .select("orcamento_id, qtde_vendida, receita, lucro")
+      .eq("usuario_id", user.id);
 
     if (!vendasData || vendasData.length === 0) {
       setLinhas([]);
@@ -52,15 +49,14 @@ export default function RankingPage() {
       agrupado[nome].lucro += v.lucro ?? 0;
     });
 
-    const linhasFinal = Object.entries(agrupado).map(([nome, v]) => ({ nome, ...v }));
-    setLinhas(linhasFinal);
+    setLinhas(Object.entries(agrupado).map(([nome, v]) => ({ nome, ...v })));
     setCarregando(false);
   }
 
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [verTodos]);
+  }, []);
 
   const ordenado = useMemo(() => {
     return [...linhas].sort((a, b) => (criterio === "qtde" ? b.qtde - a.qtde : b.lucro - a.lucro));
@@ -68,12 +64,9 @@ export default function RankingPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold">Ranking</h1>
-          <p className="text-sm text-base-muted mt-1">Seus produtos mais vendidos e mais lucrativos.</p>
-        </div>
-        {papel === "admin" && <Toggle checked={verTodos} onChange={setVerTodos} label="Ver de todos" />}
+      <div>
+        <h1 className="text-xl font-semibold">Ranking</h1>
+        <p className="text-sm text-base-muted mt-1">Seus produtos mais vendidos e mais lucrativos.</p>
       </div>
 
       <Card>

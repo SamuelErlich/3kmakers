@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
-import { Button, Field, Input, Select, SegmentedControl, Toggle } from "@/components/ui/Field";
+import { Button, Field, Input, Select, SegmentedControl } from "@/components/ui/Field";
 import { formatBRL } from "@/lib/calc";
 
 interface VendaRel {
@@ -26,8 +26,6 @@ function ultimoDiaMes(ano: number, mes: number) {
 
 export default function RelatoriosPage() {
   const supabase = createClient();
-  const [papel, setPapel] = useState<"admin" | "operador">("operador");
-  const [verTodos, setVerTodos] = useState(false);
 
   const hoje = new Date();
   const [modo, setModo] = useState<"mes" | "personalizado">("mes");
@@ -49,11 +47,9 @@ export default function RelatoriosPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    let souAdmin = false;
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("papel").eq("id", user.id).single();
-      souAdmin = profile?.papel === "admin";
-      setPapel(souAdmin ? "admin" : "operador");
+    if (!user) {
+      setCarregando(false);
+      return;
     }
 
     const { data: plats } = await supabase.from("plataformas").select("id, nome");
@@ -61,13 +57,12 @@ export default function RelatoriosPage() {
     (plats ?? []).forEach((p: any) => (mapaPlat[p.id] = p.nome));
     setNomesPlataforma(mapaPlat);
 
-    let q = supabase
+    const { data } = await supabase
       .from("vendas")
       .select("orcamento_id, plataforma_id, qtde_vendida, receita, custo_total, lucro, data_venda")
+      .eq("usuario_id", user.id)
       .gte("data_venda", inicio)
       .lte("data_venda", fim);
-    if (!(souAdmin && verTodos) && user) q = q.eq("usuario_id", user.id);
-    const { data } = await q;
     const vendasData = (data as VendaRel[]) ?? [];
     setVendas(vendasData);
 
@@ -85,7 +80,7 @@ export default function RelatoriosPage() {
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inicio, fim, verTodos]);
+  }, [inicio, fim]);
 
   const porPlataforma = useMemo(() => {
     const agrupado: Record<string, { qtde: number; receita: number; custo: number; lucro: number }> = {};
@@ -156,12 +151,9 @@ export default function RelatoriosPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold">Relatórios</h1>
-          <p className="text-sm text-base-muted mt-1">Feche o mês ou escolha um período livre, por plataforma e por item.</p>
-        </div>
-        {papel === "admin" && <Toggle checked={verTodos} onChange={setVerTodos} label="Ver de todos" />}
+      <div>
+        <h1 className="text-xl font-semibold">Relatórios</h1>
+        <p className="text-sm text-base-muted mt-1">Feche o mês ou escolha um período livre, por plataforma e por item.</p>
       </div>
 
       <Card>

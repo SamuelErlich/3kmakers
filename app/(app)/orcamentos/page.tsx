@@ -8,13 +8,11 @@ import { Button, Input, Select } from "@/components/ui/Field";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { STATUS_INFO, STATUS_ORDEM } from "@/lib/status";
 import { formatBRL } from "@/lib/calc";
-import type { Orcamento, Papel, StatusOrcamento } from "@/lib/types";
+import type { Orcamento, StatusOrcamento } from "@/lib/types";
 
 export default function OrcamentosPage() {
   const supabase = createClient();
-  const [papel, setPapel] = useState<Papel>("operador");
   const [lista, setLista] = useState<Orcamento[]>([]);
-  const [nomesUsuarios, setNomesUsuarios] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
 
   const [filtroStatus, setFiltroStatus] = useState<string>("todos");
@@ -25,23 +23,16 @@ export default function OrcamentosPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("papel").eq("id", user.id).single();
-      setPapel((profile?.papel as Papel) ?? "operador");
+    if (!user) {
+      setCarregando(false);
+      return;
     }
-
-    const { data } = await supabase.from("orcamentos").select("*").order("criado_em", { ascending: false });
+    const { data } = await supabase
+      .from("orcamentos")
+      .select("*")
+      .eq("usuario_id", user.id)
+      .order("criado_em", { ascending: false });
     setLista((data as Orcamento[]) ?? []);
-
-    // se admin, busca nomes de quem criou cada orçamento
-    if (data && data.length > 0) {
-      const ids = Array.from(new Set(data.map((o: any) => o.usuario_id)));
-      const { data: perfis } = await supabase.from("profiles").select("id, nome").in("id", ids);
-      const mapa: Record<string, string> = {};
-      (perfis ?? []).forEach((p: any) => (mapa[p.id] = p.nome));
-      setNomesUsuarios(mapa);
-    }
-
     setCarregando(false);
   }
 
@@ -142,7 +133,6 @@ export default function OrcamentosPage() {
                   <p className="text-xs text-base-muted mt-0.5">
                     {o.cliente && `${o.cliente} · `}
                     qtde {o.qtde} · {formatBRL(o.preco_final_unit)}/un
-                    {papel === "admin" && nomesUsuarios[o.usuario_id] && ` · por ${nomesUsuarios[o.usuario_id]}`}
                   </p>
                 </div>
 

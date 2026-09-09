@@ -5,13 +5,11 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Field";
 import { STATUS_INFO, STATUS_PEDIDO, proximoStatus, statusAnterior } from "@/lib/status";
 import { formatBRL } from "@/lib/calc";
-import type { Orcamento, Papel, StatusOrcamento } from "@/lib/types";
+import type { Orcamento, StatusOrcamento } from "@/lib/types";
 
 export default function PedidosPage() {
   const supabase = createClient();
-  const [papel, setPapel] = useState<Papel>("operador");
   const [lista, setLista] = useState<Orcamento[]>([]);
-  const [nomesUsuarios, setNomesUsuarios] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
 
   async function carregar() {
@@ -19,26 +17,17 @@ export default function PedidosPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("papel").eq("id", user.id).single();
-      setPapel((profile?.papel as Papel) ?? "operador");
+    if (!user) {
+      setCarregando(false);
+      return;
     }
-
     const { data } = await supabase
       .from("orcamentos")
       .select("*")
+      .eq("usuario_id", user.id)
       .in("status", STATUS_PEDIDO)
       .order("atualizado_em", { ascending: false });
     setLista((data as Orcamento[]) ?? []);
-
-    if (data && data.length > 0) {
-      const ids = Array.from(new Set(data.map((o: any) => o.usuario_id)));
-      const { data: perfis } = await supabase.from("profiles").select("id, nome").in("id", ids);
-      const mapa: Record<string, string> = {};
-      (perfis ?? []).forEach((p: any) => (mapa[p.id] = p.nome));
-      setNomesUsuarios(mapa);
-    }
-
     setCarregando(false);
   }
 
@@ -100,9 +89,6 @@ export default function PedidosPage() {
                       </div>
                       <p className="text-xs text-base-muted">
                         qtde {o.qtde} · {formatBRL(o.preco_final_unit)}/un
-                        {papel === "admin" && nomesUsuarios[o.usuario_id] && (
-                          <span className="block">por {nomesUsuarios[o.usuario_id]}</span>
-                        )}
                       </p>
                       <div className="flex gap-1.5 pt-1">
                         {anterior && (

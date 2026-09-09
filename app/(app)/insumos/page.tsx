@@ -4,15 +4,15 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
 import { Button, Field, Input } from "@/components/ui/Field";
-import type { Insumo, Papel } from "@/lib/types";
+import type { Insumo } from "@/lib/types";
 import { formatBRL } from "@/lib/calc";
 
 export default function InsumosPage() {
   const supabase = createClient();
-  const [papel, setPapel] = useState<Papel>("operador");
   const [lista, setLista] = useState<Insumo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [editando, setEditando] = useState<Insumo | null>(null);
+  const [mostrarForm, setMostrarForm] = useState(false);
   const [form, setForm] = useState({ nome: "", unidade: "un", preco_unitario: "", estoque_atual: "0", estoque_minimo: "0" });
   const [salvando, setSalvando] = useState(false);
 
@@ -21,11 +21,15 @@ export default function InsumosPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("papel").eq("id", user.id).single();
-      setPapel((profile?.papel as Papel) ?? "operador");
+    if (!user) {
+      setCarregando(false);
+      return;
     }
-    const { data } = await supabase.from("insumos").select("*").order("criado_em", { ascending: false });
+    const { data } = await supabase
+      .from("insumos")
+      .select("*")
+      .eq("usuario_id", user.id)
+      .order("criado_em", { ascending: false });
     setLista((data as Insumo[]) ?? []);
     setCarregando(false);
   }
@@ -38,6 +42,7 @@ export default function InsumosPage() {
   function abrirNovo() {
     setEditando(null);
     setForm({ nome: "", unidade: "un", preco_unitario: "", estoque_atual: "0", estoque_minimo: "0" });
+    setMostrarForm(true);
   }
 
   function abrirEdicao(i: Insumo) {
@@ -49,11 +54,19 @@ export default function InsumosPage() {
       estoque_atual: String(i.estoque_atual),
       estoque_minimo: String(i.estoque_minimo),
     });
+    setMostrarForm(true);
   }
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
     setSalvando(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setSalvando(false);
+      return;
+    }
     const payload = {
       nome: form.nome,
       unidade: form.unidade,
@@ -64,10 +77,10 @@ export default function InsumosPage() {
     if (editando) {
       await supabase.from("insumos").update(payload).eq("id", editando.id);
     } else {
-      await supabase.from("insumos").insert(payload);
+      await supabase.from("insumos").insert({ ...payload, usuario_id: user.id });
     }
     setSalvando(false);
-    abrirNovo();
+    setMostrarForm(false);
     carregar();
   }
 
@@ -77,19 +90,20 @@ export default function InsumosPage() {
     carregar();
   }
 
-  const podeEditar = papel === "admin";
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Insumos</h1>
-        <p className="text-sm text-base-muted mt-1">
-          Embalagem, etiqueta, suporte etc. Aqui é só controle de estoque — não entra automaticamente no
-          cálculo do orçamento.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-xl font-semibold">Insumos</h1>
+          <p className="text-sm text-base-muted mt-1">
+            Embalagem, etiqueta, suporte etc. Aqui é só controle de estoque — não entra automaticamente no
+            cálculo do orçamento.
+          </p>
+        </div>
+        {!mostrarForm && <Button onClick={abrirNovo}>+ Novo insumo</Button>}
       </div>
 
-      {podeEditar && (
+      {mostrarForm && (
         <Card title={editando ? "Editar insumo" : "Novo insumo"} icon="📦">
           <form onSubmit={salvar} className="grid sm:grid-cols-2 gap-4">
             <Field label="Nome">
@@ -129,11 +143,9 @@ export default function InsumosPage() {
               <Button type="submit" disabled={salvando}>
                 {salvando ? "Salvando..." : editando ? "Salvar alterações" : "Adicionar insumo"}
               </Button>
-              {editando && (
-                <Button type="button" variant="secondary" onClick={abrirNovo}>
-                  Cancelar
-                </Button>
-              )}
+              <Button type="button" variant="secondary" onClick={() => setMostrarForm(false)}>
+                Cancelar
+              </Button>
             </div>
           </form>
         </Card>
@@ -167,16 +179,14 @@ export default function InsumosPage() {
                     >
                       {precisaComprar ? "Comprar" : "OK"}
                     </span>
-                    {podeEditar && (
-                      <div className="flex gap-2">
-                        <Button variant="secondary" onClick={() => abrirEdicao(i)}>
-                          Editar
-                        </Button>
-                        <Button variant="danger" onClick={() => excluir(i.id)}>
-                          Excluir
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex gap-2">
+                      <Button variant="secondary" onClick={() => abrirEdicao(i)}>
+                        Editar
+                      </Button>
+                      <Button variant="danger" onClick={() => excluir(i.id)}>
+                        Excluir
+                      </Button>
+                    </div>
                   </div>
                 </div>
               );

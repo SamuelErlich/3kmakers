@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
-import { Button, Field, Input, Toggle } from "@/components/ui/Field";
+import { Button, Field, Input } from "@/components/ui/Field";
 import { formatBRL } from "@/lib/calc";
 
 interface Investimento {
@@ -18,10 +18,7 @@ interface Investimento {
 
 export default function InvestimentosPage() {
   const supabase = createClient();
-  const [papel, setPapel] = useState<"admin" | "operador">("operador");
-  const [verTodos, setVerTodos] = useState(false);
   const [lista, setLista] = useState<Investimento[]>([]);
-  const [nomesUsuarios, setNomesUsuarios] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
   const [form, setForm] = useState({
     descricao: "",
@@ -36,31 +33,23 @@ export default function InvestimentosPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    let souAdmin = false;
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("papel").eq("id", user.id).single();
-      souAdmin = profile?.papel === "admin";
-      setPapel(souAdmin ? "admin" : "operador");
+    if (!user) {
+      setCarregando(false);
+      return;
     }
-    let query = supabase.from("investimentos").select("*").order("data", { ascending: false });
-    if (!(souAdmin && verTodos) && user) query = query.eq("usuario_id", user.id);
-    const { data } = await query;
+    const { data } = await supabase
+      .from("investimentos")
+      .select("*")
+      .eq("usuario_id", user.id)
+      .order("data", { ascending: false });
     setLista((data as Investimento[]) ?? []);
-
-    if (souAdmin && data && data.length > 0) {
-      const ids = Array.from(new Set(data.map((g: any) => g.usuario_id)));
-      const { data: perfis } = await supabase.from("profiles").select("id, nome").in("id", ids);
-      const mapa: Record<string, string> = {};
-      (perfis ?? []).forEach((p: any) => (mapa[p.id] = p.nome));
-      setNomesUsuarios(mapa);
-    }
     setCarregando(false);
   }
 
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [verTodos]);
+  }, []);
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
@@ -94,14 +83,11 @@ export default function InvestimentosPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold">Investimentos</h1>
-          <p className="text-sm text-base-muted mt-1">
-            Aportes de capital — impressora nova, upgrade, ferramentas. Separado do gasto operacional do dia a dia.
-          </p>
-        </div>
-        {papel === "admin" && <Toggle checked={verTodos} onChange={setVerTodos} label="Ver de todos" />}
+      <div>
+        <h1 className="text-xl font-semibold">Investimentos</h1>
+        <p className="text-sm text-base-muted mt-1">
+          Aportes de capital — impressora nova, upgrade, ferramentas. Separado do gasto operacional do dia a dia.
+        </p>
       </div>
 
       <Card title="Novo investimento" icon="📈">
@@ -142,7 +128,6 @@ export default function InvestimentosPage() {
                   <p className="text-xs text-base-muted mt-0.5">
                     {new Date(i.data + "T00:00:00").toLocaleDateString("pt-BR")}
                     {i.categoria && ` · ${i.categoria}`}
-                    {papel === "admin" && verTodos && nomesUsuarios[i.usuario_id] && ` · ${nomesUsuarios[i.usuario_id]}`}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">

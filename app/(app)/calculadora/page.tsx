@@ -101,8 +101,8 @@ function CalculadoraPage() {
       setEmpresaNome(profile?.empresa_nome ?? "");
     }
     const [{ data: imps }, { data: fils }, { data: plats }] = await Promise.all([
-      supabase.from("impressoras").select("*").eq("ativa", true).order("nome"),
-      supabase.from("filamentos").select("*").order("material"),
+      supabase.from("impressoras").select("*").eq("usuario_id", user?.id ?? "").eq("ativa", true).order("nome"),
+      supabase.from("filamentos").select("*").eq("usuario_id", user?.id ?? "").order("material"),
       supabase.from("plataformas").select("*").eq("ativa", true).order("nome"),
     ]);
     const impressorasCarregadas = (imps as Impressora[]) ?? [];

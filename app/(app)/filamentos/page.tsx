@@ -4,18 +4,18 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
 import { Button, Field, Input } from "@/components/ui/Field";
-import type { Filamento, Papel } from "@/lib/types";
+import type { Filamento } from "@/lib/types";
 import { formatBRL } from "@/lib/calc";
 
 const MATERIAIS = ["PLA", "PETG", "ABS", "TPU", "Nylon", "Resina", "Outro"];
 
 export default function FilamentosPage() {
   const supabase = createClient();
-  const [papel, setPapel] = useState<Papel>("operador");
   const [alertaPct, setAlertaPct] = useState(0.2);
   const [lista, setLista] = useState<Filamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [editando, setEditando] = useState<Filamento | null>(null);
+  const [mostrarForm, setMostrarForm] = useState(false);
   const [form, setForm] = useState({
     material: MATERIAIS[0],
     cor_marca: "",
@@ -31,13 +31,18 @@ export default function FilamentosPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("papel").eq("id", user.id).single();
-      setPapel((profile?.papel as Papel) ?? "operador");
+    if (!user) {
+      setCarregando(false);
+      return;
     }
     const { data: cfg } = await supabase.from("config").select("alerta_estoque_pct").single();
     if (cfg) setAlertaPct(cfg.alerta_estoque_pct);
-    const { data } = await supabase.from("filamentos").select("*").order("criado_em", { ascending: false });
+
+    const { data } = await supabase
+      .from("filamentos")
+      .select("*")
+      .eq("usuario_id", user.id)
+      .order("criado_em", { ascending: false });
     setLista((data as Filamento[]) ?? []);
     setCarregando(false);
   }
@@ -50,6 +55,7 @@ export default function FilamentosPage() {
   function abrirNovo() {
     setEditando(null);
     setForm({ material: MATERIAIS[0], cor_marca: "", peso_bobina_g: "1000", preco_bobina: "", frete: "0", estoque_inicial_g: "1000" });
+    setMostrarForm(true);
   }
 
   function abrirEdicao(f: Filamento) {
@@ -62,11 +68,19 @@ export default function FilamentosPage() {
       frete: String(f.frete),
       estoque_inicial_g: String(f.estoque_inicial_g),
     });
+    setMostrarForm(true);
   }
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
     setSalvando(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setSalvando(false);
+      return;
+    }
     const estoqueInicial = Number(form.estoque_inicial_g) || 0;
     if (editando) {
       await supabase
@@ -82,6 +96,7 @@ export default function FilamentosPage() {
         .eq("id", editando.id);
     } else {
       await supabase.from("filamentos").insert({
+        usuario_id: user.id,
         material: form.material,
         cor_marca: form.cor_marca || null,
         peso_bobina_g: Number(form.peso_bobina_g) || 1,
@@ -92,7 +107,7 @@ export default function FilamentosPage() {
       });
     }
     setSalvando(false);
-    abrirNovo();
+    setMostrarForm(false);
     carregar();
   }
 
@@ -102,18 +117,19 @@ export default function FilamentosPage() {
     carregar();
   }
 
-  const podeEditar = papel === "admin";
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Filamentos</h1>
-        <p className="text-sm text-base-muted mt-1">
-          O custo por grama é calculado automaticamente e usado direto na Calculadora.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-xl font-semibold">Filamentos</h1>
+          <p className="text-sm text-base-muted mt-1">
+            O custo por grama é calculado automaticamente e usado direto na Calculadora.
+          </p>
+        </div>
+        {!mostrarForm && <Button onClick={abrirNovo}>+ Novo filamento</Button>}
       </div>
 
-      {podeEditar && (
+      {mostrarForm && (
         <Card title={editando ? "Editar filamento" : "Novo filamento"} icon="🧵">
           <form onSubmit={salvar} className="grid sm:grid-cols-2 gap-4">
             <Field label="Material">
@@ -161,11 +177,9 @@ export default function FilamentosPage() {
               <Button type="submit" disabled={salvando}>
                 {salvando ? "Salvando..." : editando ? "Salvar alterações" : "Adicionar filamento"}
               </Button>
-              {editando && (
-                <Button type="button" variant="secondary" onClick={abrirNovo}>
-                  Cancelar
-                </Button>
-              )}
+              <Button type="button" variant="secondary" onClick={() => setMostrarForm(false)}>
+                Cancelar
+              </Button>
             </div>
           </form>
         </Card>
@@ -204,16 +218,14 @@ export default function FilamentosPage() {
                     >
                       {precisaComprar ? "Comprar" : "OK"}
                     </span>
-                    {podeEditar && (
-                      <div className="flex gap-2">
-                        <Button variant="secondary" onClick={() => abrirEdicao(f)}>
-                          Editar
-                        </Button>
-                        <Button variant="danger" onClick={() => excluir(f.id)}>
-                          Excluir
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex gap-2">
+                      <Button variant="secondary" onClick={() => abrirEdicao(f)}>
+                        Editar
+                      </Button>
+                      <Button variant="danger" onClick={() => excluir(f.id)}>
+                        Excluir
+                      </Button>
+                    </div>
                   </div>
                 </div>
               );
