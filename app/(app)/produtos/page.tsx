@@ -27,6 +27,7 @@ export default function ProdutosPage() {
     observacoes: "",
   });
   const [salvando, setSalvando] = useState(false);
+  const [erroForm, setErroForm] = useState<string | null>(null);
 
   // ---- venda rápida direto do produto ----
   const [vendendoId, setVendendoId] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export default function ProdutosPage() {
 
   function abrirNovo() {
     setEditando(null);
+    setErroForm(null);
     setForm({ nome: "", peso_g: "", horas: "0", minutos: "0", filamento_id: "", observacoes: "" });
     setFoto(null);
     setFotoPreview(null);
@@ -70,6 +72,7 @@ export default function ProdutosPage() {
 
   function abrirEdicao(p: Produto) {
     setEditando(p);
+    setErroForm(null);
     const min = p.tempo_impressao_min ?? 0;
     setForm({
       nome: p.nome,
@@ -94,6 +97,7 @@ export default function ProdutosPage() {
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
     setSalvando(true);
+    setErroForm(null);
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -106,10 +110,13 @@ export default function ProdutosPage() {
     if (foto) {
       const nomeArquivo = `${user.id}/produtos/${Date.now()}-${foto.name}`;
       const { error: upErr } = await supabase.storage.from("pecas").upload(nomeArquivo, foto);
-      if (!upErr) {
-        const { data: pub } = supabase.storage.from("pecas").getPublicUrl(nomeArquivo);
-        fotoUrl = pub.publicUrl;
+      if (upErr) {
+        setErroForm(`Não foi possível enviar a foto (${upErr.message}). Verifique se o bucket "pecas" existe e está público.`);
+        setSalvando(false);
+        return;
       }
+      const { data: pub } = supabase.storage.from("pecas").getPublicUrl(nomeArquivo);
+      fotoUrl = pub.publicUrl;
     }
 
     const payload = {
@@ -122,9 +129,19 @@ export default function ProdutosPage() {
     };
 
     if (editando) {
-      await supabase.from("produtos").update(payload).eq("id", editando.id);
+      const { error } = await supabase.from("produtos").update(payload).eq("id", editando.id);
+      if (error) {
+        setErroForm(error.message);
+        setSalvando(false);
+        return;
+      }
     } else {
-      await supabase.from("produtos").insert({ ...payload, usuario_id: user.id });
+      const { error } = await supabase.from("produtos").insert({ ...payload, usuario_id: user.id });
+      if (error) {
+        setErroForm(error.message);
+        setSalvando(false);
+        return;
+      }
     }
     setSalvando(false);
     setMostrarForm(false);
@@ -330,6 +347,8 @@ export default function ProdutosPage() {
                 só funciona em produtos salvos a partir de um cálculo feito na Calculadora.
               </p>
             )}
+
+            {erroForm && <p className="text-sm text-bad sm:col-span-2">{erroForm}</p>}
 
             <div className="sm:col-span-2 flex gap-2">
               <Button type="submit" disabled={salvando}>
